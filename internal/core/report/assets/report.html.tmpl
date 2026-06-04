@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{.Session}} — UI Test Report</title>
+{{if .Embed}}<style>{{.InlineCSS}}</style>{{else}}<link rel="stylesheet" href="assets/report.css">{{end}}
+</head>
+<body>
+<div class="wrap">
+
+  <div class="header">
+    {{if .IsPass}}<span class="banner pass">● PASS</span>{{else}}<span class="banner fail">● FAIL</span>{{end}}
+    <h1>{{.Session}}</h1>
+    <div class="meta">
+      <span>App: <code>{{.Application}}</code></span>
+      <span>AI: {{.Provider}}{{if .Model}} ({{.Model}}){{end}}</span>
+      <span>Frontend: {{.Frontend}}</span>
+      <span>Runner: {{.RunnerVersion}}</span>
+    </div>
+    <div class="meta" style="margin-top:6px">
+      <span>OS: {{.Environment.OS}}</span>
+      <span>Screen: {{.Environment.Screen}}</span>
+      <span>Started: {{ts .StartedAt}}</span>
+      <span>Duration: {{dur .DurationMs}}</span>
+    </div>
+    <div class="counts">
+      <div class="count"><b>{{.Summary.Total}}</b><small>Total</small></div>
+      <div class="count passed"><b>{{.Summary.Passed}}</b><small>Passed</small></div>
+      <div class="count failed"><b>{{.Summary.Failed}}</b><small>Failed</small></div>
+      <div class="count errors"><b>{{.Summary.Errors}}</b><small>Errors</small></div>
+      <div class="count skipped"><b>{{.Summary.Skipped}}</b><small>Skipped</small></div>
+    </div>
+    {{if .UnverifiedBaselines}}<div class="warnbar">⚠ This run contains unverified baselines (some assertions had no approved "expected" image).</div>{{end}}
+  </div>
+
+  {{range .Cases}}
+  <div class="case {{if not (eq (printf "%s" .Status) "passed")}}open{{end}}">
+    <div class="case-head">
+      <span class="arrow">▶</span>
+      <span class="chip {{.Status}}">{{.Status}}</span>
+      <span class="case-id">{{.ID}}</span>
+      <span class="case-name">{{.Name}}{{range .Tags}}<span class="tag">{{.}}</span>{{end}}</span>
+      <span class="case-dur">{{dur .DurationMs}}</span>
+    </div>
+    <div class="case-body">
+      {{if .Description}}<div class="desc">{{.Description}}</div>{{end}}
+      {{if .Error}}<div class="step-err">{{.Error}}</div>{{end}}
+
+      {{if .Setup}}<div class="section-title">Setup</div>{{template "steps" (args $ .Setup)}}{{end}}
+
+      <div class="section-title">Steps</div>
+      {{template "steps" (args $ .Steps)}}
+
+      <div class="section-title">Validation — {{.Validation.Human}}</div>
+      {{range .Validation.Assert}}
+      <div class="assert {{.Status}}">
+        <div class="assert-head">
+          <span class="chip {{.Status}}">{{.Status}}</span>
+          {{if .Human}}<b style="margin-left:8px">{{.Human}}</b>{{end}}
+          <div class="assert-q">Q: {{.Question}} <span class="assert-meta">— expect: {{.Expect}}</span></div>
+          <div class="assert-ai">AI ({{.Provider}}): {{if .RawAnswer}}“{{.RawAnswer}}”{{else}}<i>no answer</i>{{end}} <span class="verdict">→ verdict: {{.Verdict}}</span></div>
+          {{if .Error}}<div class="step-err">{{.Error}}</div>{{end}}
+        </div>
+        <div class="aid">
+          <span>Overlay (visual aid only — verdict is from the AI):</span>
+          <input type="range" min="0" max="100" value="100">
+        </div>
+        <div class="compare">
+          <div class="pane pane-expected">
+            <h4>What should be (expected) <span class="src-badge {{.Expected.Source}}">{{.Expected.Source}}</span></h4>
+            {{if .Expected.Image}}<img src="{{$.Img .Expected.Image}}" alt="expected">{{else}}<div class="missing">screenshot missing</div>{{end}}
+          </div>
+          <div class="pane pane-actual">
+            <h4>What actually is (actual)</h4>
+            {{if .Actual.Image}}<img src="{{$.Img .Actual.Image}}" alt="actual">{{else}}<div class="missing">screenshot missing</div>{{end}}
+          </div>
+        </div>
+      </div>
+      {{end}}
+
+      {{if .Teardown}}<div class="section-title">Teardown</div>{{template "steps" (args $ .Teardown)}}{{end}}
+    </div>
+  </div>
+  {{end}}
+
+  <footer>Generated {{.Generated}} by uitest {{.RunnerVersion}}</footer>
+</div>
+{{if .Embed}}<script>{{.InlineJS}}</script>{{else}}<script src="assets/report.js"></script>{{end}}
+</body>
+</html>
+
+{{define "steps"}}
+  {{$root := .Root}}
+  {{range .Steps}}
+  <div class="step">
+    <span class="step-human">{{.Human}}</span>
+    <span class="step-status {{.Status}}">[{{.Status}}]</span>
+    <div class="step-machine">{{range .Machine}}{{.Action}}{{if .Summary}} — {{.Summary}}{{end}}; {{end}}</div>
+    {{if .Error}}<div class="step-err">{{.Error}}</div>{{end}}
+    {{if .Screenshots}}<div class="step-shots">{{range .Screenshots}}<img src="{{$root.Img .}}" alt="step screenshot">{{end}}</div>{{end}}
+  </div>
+  {{end}}
+{{end}}

@@ -1,0 +1,164 @@
+# =============================================================================
+# Example Test Session — Windows Notepad smoke test
+#
+# Demonstrates the TestSession.yaml format (docs/03-testsession-yaml-spec.md).
+#
+# Structure of every test case:
+#   - steps[]  : each step has a `human` section (plain English) and a
+#                `machine` section (one or more commands the runner executes).
+#   - validation : how pass/fail is decided. Its `human` text states the
+#                  acceptance criteria; the machine equivalent is `assert`
+#                  (AI yes/no checks).
+#
+# Run with:   uitest run examples/TestSessionCases.yaml
+# Validate:   uitest validate examples/TestSessionCases.yaml
+# =============================================================================
+
+version: 1
+
+session:
+  name: "Notepad smoke test"
+  description: >
+    Verifies that Notepad launches, accepts typed text, reflects it on screen,
+    and surfaces no error dialogs. Results are checked by asking an AI agent
+    about screenshots rather than by inspecting controls directly.
+
+  application:
+    path: "C:\\Windows\\System32\\notepad.exe"
+    args: []
+    startupTimeout: 10s
+    readyWhen:
+      window: { title: "Notepad" }   # substring match on the window title
+    shutdown: graceful
+
+  ai:
+    provider: claude     # claude | codex | cursor
+    timeout: 30s
+    retries: 1
+    samples: 1           # bump to 3+ to majority-vote flaky answers
+
+  settings:
+    outDir: "./test-results"
+    defaultStepTimeout: 15s
+    failFast: false
+    screenshotOnFailure: true
+    windowMatch: title
+    coordinateSpace: window
+    dpiAware: true
+
+variables:
+  greeting: "Hello from the UI Testing Framework!"
+
+testCases:
+
+  # ---------------------------------------------------------------------------
+  - id: TC-001
+    name: "User can type text and see it in the editor"
+    description: >
+      The editor accepts keyboard input and the typed text becomes visible in
+      the document area.
+    folder: "Editor"
+    tags: [smoke, editor]
+
+    steps:
+      - human: "Make sure the Notepad window is focused"
+        machine:
+          action: focus_window
+          target: { window: "Notepad" }
+
+      - human: "Type the configured greeting into the editor"
+        machine:
+          action: type_text
+          text: "${greeting}"
+
+    validation:
+      human: >
+        The greeting text is visible in the editor area and no error dialog is
+        shown anywhere on screen.
+      assert:
+        - id: greeting-visible
+          human: "Greeting is visible in the editor"
+          action: assert_ai
+          question: >
+            Does the Notepad editing area contain the text
+            "Hello from the UI Testing Framework!"?
+          target: { window: "Notepad" }
+          expect: yes
+          # "What should be" reference. On first run, omit this and approve the
+          # captured screenshot as the baseline; the report shows expected vs actual.
+          baseline: "baselines/TC-001/greeting-visible.png"
+
+        - id: no-error-dialog
+          human: "No error dialog is shown"
+          action: assert_ai
+          question: "Is any error dialog or red error message visible on the screen?"
+          target: screen
+          expect: no
+
+  # ---------------------------------------------------------------------------
+  - id: TC-002
+    name: "User can open the Save dialog"
+    description: >
+      Using the keyboard, the user opens the Save dialog. We confirm the Save
+      dialog appears.
+    folder: "Editor/Dialogs"
+    tags: [editor, dialog]
+
+    setup:
+      - human: "Focus the editor window before saving"
+        machine:
+          action: focus_window
+          target: { window: "Notepad" }
+
+    steps:
+      - human: "Press Ctrl+S to open the Save dialog, then wait for it to appear"
+        machine:
+          - action: key_press
+            keys: "Ctrl+S"
+          - action: wait
+            ms: 1000
+          - action: screenshot
+            target: screen
+            save: "save-dialog.png"
+
+    validation:
+      human: "A 'Save As' file dialog is open and visible."
+      assert:
+        - action: assert_ai
+          question: "Is a 'Save As' file dialog currently open and visible?"
+          target: screen
+          expect: yes
+
+    teardown:
+      - human: "Cancel the Save dialog so the next case starts clean"
+        machine:
+          action: key_press
+          keys: "Esc"
+
+  # ---------------------------------------------------------------------------
+  - id: TC-003
+    name: "Mouse interaction: select text via drag"
+    description: >
+      Demonstrates mouse drag and an AI assertion about selection state.
+    folder: "Mouse"
+    tags: [mouse, editor]
+
+    steps:
+      - human: "Focus the editor window"
+        machine:
+          action: focus_window
+          target: { window: "Notepad" }
+
+      - human: "Drag across the first line to select the text"
+        machine:
+          action: mouse_drag
+          from: { x: 10, y: 40, relativeTo: window }
+          to:   { x: 320, y: 40, relativeTo: window }
+
+    validation:
+      human: "Some text in the editor is highlighted (selected)."
+      assert:
+        - action: assert_ai
+          question: "Is some text in the editor area highlighted (selected)?"
+          target: { window: "Notepad" }
+          expect: yes

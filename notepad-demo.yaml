@@ -1,0 +1,39 @@
+version: 1
+session:
+  name: "Notepad demo (unique title)"
+  application:
+    path: 'C:\Windows\System32\notepad.exe'
+    startupTimeout: 12s
+    readyWhen:
+      window: { title: "Untitled - Notepad" }
+    shutdown: graceful
+  ai:
+    provider: claude
+    timeout: 60s
+  settings:
+    coordinateSpace: window
+    windowMatch: title
+variables:
+  greeting: "Hello from the UI Testing Framework!"
+testCases:
+  - id: TC-TYPE
+    name: "Typed text appears in a fresh Notepad"
+    tags: [smoke]
+    steps:
+      - human: "Focus the fresh Notepad window"
+        machine:
+          action: focus_window
+          target: { window: "Untitled - Notepad" }
+      - human: "Type the greeting"
+        machine:
+          action: type_text
+          text: "${greeting}"
+    validation:
+      human: "The greeting is visible in the editor."
+      assert:
+        - id: greeting-visible
+          human: "Greeting visible"
+          action: assert_ai
+          question: 'Does the Notepad editing area contain the text "Hello from the UI Testing Framework!"?'
+          target: { window: "Untitled - Notepad" }
+          expect: yes

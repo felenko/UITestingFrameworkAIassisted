@@ -1,0 +1,84 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="627" viewBox="0 0 1200 627" role="img" aria-labelledby="title desc">
+  <title id="title">AI assisted UI testing automation social image</title>
+  <desc id="desc">A desktop testing scene showing a scripted runner driving a UI while AI evaluates screenshots.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0f172a"/>
+      <stop offset="0.52" stop-color="#172554"/>
+      <stop offset="1" stop-color="#14532d"/>
+    </linearGradient>
+    <linearGradient id="screen" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#f8fafc"/>
+      <stop offset="1" stop-color="#dbeafe"/>
+    </linearGradient>
+    <linearGradient id="ai" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#22d3ee"/>
+      <stop offset="1" stop-color="#a7f3d0"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="18" stdDeviation="22" flood-color="#020617" flood-opacity="0.35"/>
+    </filter>
+    <filter id="soft" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="14"/>
+    </filter>
+  </defs>
+
+  <rect width="1200" height="627" fill="url(#bg)"/>
+  <circle cx="1010" cy="120" r="170" fill="#38bdf8" opacity="0.12" filter="url(#soft)"/>
+  <circle cx="225" cy="505" r="210" fill="#22c55e" opacity="0.10" filter="url(#soft)"/>
+
+  <g transform="translate(70 62)">
+    <text x="0" y="0" fill="#e0f2fe" font-family="Segoe UI, Arial, sans-serif" font-size="25" font-weight="650">AI assisted UI testing automation</text>
+    <text x="0" y="66" fill="#ffffff" font-family="Segoe UI, Arial, sans-serif" font-size="56" font-weight="750">What if AI could</text>
+    <text x="0" y="128" fill="#ffffff" font-family="Segoe UI, Arial, sans-serif" font-size="56" font-weight="750">see your screen?</text>
+    <text x="2" y="184" fill="#cbd5e1" font-family="Segoe UI, Arial, sans-serif" font-size="26" font-weight="450">Scripted actions + AI visual checks</text>
+  </g>
+
+  <g filter="url(#shadow)">
+    <rect x="77" y="300" width="505" height="268" rx="16" fill="#020617" opacity="0.9"/>
+    <rect x="92" y="316" width="475" height="238" rx="10" fill="#0b1220"/>
+    <circle cx="119" cy="338" r="6" fill="#ef4444"/>
+    <circle cx="141" cy="338" r="6" fill="#f59e0b"/>
+    <circle cx="163" cy="338" r="6" fill="#22c55e"/>
+    <text x="118" y="386" fill="#93c5fd" font-family="Consolas, 'Courier New', monospace" font-size="20">TC-001: User can save document</text>
+    <text x="118" y="426" fill="#e2e8f0" font-family="Consolas, 'Courier New', monospace" font-size="19">mouse_click  x:412 y:88</text>
+    <text x="118" y="461" fill="#e2e8f0" font-family="Consolas, 'Courier New', monospace" font-size="19">type_text    "Hello, world!"</text>
+    <text x="118" y="496" fill="#86efac" font-family="Consolas, 'Courier New', monospace" font-size="19">assert_ai    "Is greeting visible?"</text>
+    <rect x="118" y="518" width="168" height="28" rx="14" fill="#166534"/>
+    <text x="137" y="539" fill="#dcfce7" font-family="Segoe UI, Arial, sans-serif" font-size="16" font-weight="700">PASS / FAIL</text>
+  </g>
+
+  <g filter="url(#shadow)">
+    <rect x="485" y="150" width="480" height="326" rx="18" fill="#0f172a"/>
+    <rect x="507" y="176" width="436" height="250" rx="10" fill="url(#screen)"/>
+    <rect x="535" y="205" width="380" height="46" rx="6" fill="#bfdbfe"/>
+    <rect x="535" y="278" width="215" height="20" rx="4" fill="#64748b"/>
+    <rect x="535" y="315" width="330" height="18" rx="4" fill="#94a3b8"/>
+    <rect x="535" y="350" width="305" height="18" rx="4" fill="#94a3b8"/>
+    <rect x="535" y="389" width="132" height="34" rx="6" fill="#2563eb"/>
+    <text x="558" y="412" fill="#ffffff" font-family="Segoe UI, Arial, sans-serif" font-size="18" font-weight="700">Save</text>
+    <path d="M731 436h43l14 42H718z" fill="#1e293b"/>
+    <rect x="655" y="478" width="198" height="16" rx="8" fill="#1e293b"/>
+  </g>
+
+  <g transform="translate(901 257)" filter="url(#shadow)">
+    <circle cx="86" cy="86" r="86" fill="url(#ai)"/>
+    <circle cx="86" cy="86" r="62" fill="#0f172a" opacity="0.92"/>
+    <circle cx="64" cy="75" r="10" fill="#a7f3d0"/>
+    <circle cx="112" cy="75" r="10" fill="#a7f3d0"/>
+    <path d="M55 109c22 20 55 20 77 0" fill="none" stroke="#a7f3d0" stroke-width="8" stroke-linecap="round"/>
+    <path d="M86 16v24M86 148v24M16 86h24M148 86h24M36 36l17 17M139 139l17 17M156 36l-17 17M53 139l-17 17" stroke="#67e8f9" stroke-width="7" stroke-linecap="round"/>
+  </g>
+
+  <path d="M620 286 C708 225, 816 220, 915 298" fill="none" stroke="#67e8f9" stroke-width="5" stroke-linecap="round" stroke-dasharray="12 14"/>
+  <path d="M914 298l-32-3 20-25z" fill="#67e8f9"/>
+  <path d="M557 450 C628 535, 755 554, 910 406" fill="none" stroke="#86efac" stroke-width="5" stroke-linecap="round" stroke-dasharray="12 14"/>
+  <path d="M910 406l-30 11 9-31z" fill="#86efac"/>
+
+  <g transform="translate(735 510)">
+    <rect x="0" y="0" width="392" height="58" rx="29" fill="#f8fafc" opacity="0.96"/>
+    <circle cx="34" cy="29" r="16" fill="#22c55e"/>
+    <path d="M25 29l7 7 15-17" fill="none" stroke="#ffffff" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+    <text x="62" y="37" fill="#0f172a" font-family="Segoe UI, Arial, sans-serif" font-size="22" font-weight="750">No more boring clicking</text>
+  </g>
+</svg>

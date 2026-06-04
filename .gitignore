@@ -1,0 +1,19 @@
+# Build output
+/bin/
+
+# Run artifacts (any level — screenshots may contain captured app data)
+test-results/
+
+# Local agent / editor settings
+.claude/settings.local.json
+
+# Private / client test sessions — contain environment credentials and live in
+# their own project repos, never committed with the framework.
+# The real VC8 smoke session lives in the Biometrica VC8 project; see README.
+VisualCasino8_Smoke.yaml
+**/VisualCasino8_Smoke.yaml
+
+# OS / editor
+*.exe
+.DS_Store
+Thumbs.db

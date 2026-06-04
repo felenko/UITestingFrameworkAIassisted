@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>uitest</title>
+<style>
+:root{--bg:#0f1115;--panel:#181b22;--panel2:#1f232c;--border:#2a2f3a;--text:#e6e9ef;--muted:#9aa3b2;--pass:#2ecc71;--fail:#e74c3c;--error:#e67e22;--skip:#7f8c8d;--accent:#4a9eff;}
+*{box-sizing:border-box}
+body{margin:0;font:14px/1.5 -apple-system,Segoe UI,Roboto,Arial,sans-serif;background:var(--bg);color:var(--text)}
+button{font:inherit;background:var(--accent);color:#06121f;border:0;border-radius:8px;padding:9px 16px;font-weight:600;cursor:pointer}
+button.ghost{background:var(--panel2);color:var(--text);border:1px solid var(--border)}
+button:disabled{opacity:.4;cursor:not-allowed}
+input,select{font:inherit;background:var(--panel2);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:8px 10px}
+code{font-family:ui-monospace,Consolas,monospace;color:var(--muted)}
+.topbar{display:flex;align-items:center;gap:12px;padding:12px 20px;border-bottom:1px solid var(--border);background:var(--panel)}
+.topbar h1{font-size:16px;margin:0;flex:1}
+.logo{font-weight:800;color:var(--accent)}
+.wrap{padding:20px;max-width:1120px;margin:0 auto}
+.card{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:18px;margin-bottom:16px}
+.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.muted{color:var(--muted)}
+.hidden{display:none}
+.chip{font-size:11px;font-weight:700;padding:3px 9px;border-radius:999px;text-transform:uppercase}
+.chip.pending{background:rgba(127,140,141,.15);color:var(--skip)}
+.chip.running{background:rgba(74,158,255,.18);color:var(--accent)}
+.chip.passed{background:rgba(46,204,113,.15);color:var(--pass)}
+.chip.failed{background:rgba(231,76,60,.15);color:var(--fail)}
+.chip.error{background:rgba(230,126,34,.15);color:var(--error)}
+.chip.skipped{background:rgba(127,140,141,.15);color:var(--skip)}
+.tag{background:var(--panel2);border:1px solid var(--border);color:var(--muted);font-size:11px;padding:2px 8px;border-radius:999px;margin-left:6px}
+.tree .case{border-left:2px solid var(--border);padding:4px 0 4px 12px;margin:6px 0}
+.tree .caseSel{cursor:pointer;display:inline-flex;align-items:center;gap:6px}
+.tree .caseSel input{cursor:pointer}
+.tree .folder{margin:4px 0}
+.tree .folder-head{display:flex;align-items:center;gap:6px;cursor:pointer;padding:3px 0;font-weight:600;user-select:none}
+.tree .fc-toggle{width:14px;color:var(--muted);text-align:center}
+.tree .folder-name{flex:0 1 auto}
+.tree .fcount{color:var(--muted);font-weight:400;font-size:12px}
+.tree .folder-children{margin-left:16px;border-left:1px solid var(--border);padding-left:10px}
+.tree .folder.collapsed>.folder-children{display:none}
+.tree .folder-head input{cursor:pointer}
+.tree .step{color:var(--muted);font-size:13px;margin-left:10px}
+.counts{display:flex;gap:10px;flex-wrap:wrap;margin:10px 0}
+.count{background:var(--panel2);border:1px solid var(--border);border-radius:8px;padding:6px 12px;min-width:70px}
+.count b{display:block;font-size:18px}.count small{color:var(--muted);text-transform:uppercase;font-size:10px}
+.count.passed b{color:var(--pass)}.count.failed b{color:var(--fail)}.count.errors b{color:var(--error)}
+.progress{height:8px;background:var(--panel2);border-radius:999px;overflow:hidden;margin:8px 0}
+.progress>div{height:100%;background:var(--accent);width:0;transition:width .3s}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.caselist .ci{display:flex;align-items:center;gap:10px;padding:8px 10px;border:1px solid var(--border);border-radius:8px;margin-bottom:6px}
+.caselist .ci .nm{flex:1}
+.shot img{width:100%;border:1px solid var(--border);border-radius:8px;background:#000}
+.feed .af{border:1px solid var(--border);border-radius:8px;padding:10px;margin-bottom:8px;background:var(--panel2)}
+.feed .af.failed{border-color:var(--fail)}.feed .af.error{border-color:var(--error)}
+.feed .q{margin:4px 0}
+.cmp{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px}
+.cmp h5{margin:0 0 4px;font-size:10px;text-transform:uppercase;color:var(--muted)}
+.cmp img{width:100%;border:1px solid var(--border);border-radius:6px;background:#000}
+.log{font-family:ui-monospace,Consolas,monospace;font-size:12px;color:var(--muted);background:#0b0d11;border:1px solid var(--border);border-radius:8px;padding:10px;height:160px;overflow:auto;white-space:pre-wrap}
+.active{font-size:13px}
+.banner{display:inline-block;font-weight:700;padding:6px 14px;border-radius:999px}
+.banner.pass{background:rgba(46,204,113,.15);color:var(--pass)}
+.banner.fail{background:rgba(231,76,60,.15);color:var(--fail)}
+</style>
+</head>
+<body>
+<div class="topbar">
+  <span class="logo">▣ uitest</span>
+  <h1 id="title">UI Testing Framework</h1>
+  <button class="ghost" id="btnBack" onclick="showPicker()" style="display:none">← New session</button>
+</div>
+
+<div class="wrap">
+
+  <!-- PICKER -->
+  <section id="picker">
+    <div class="card">
+      <h2 style="margin-top:0">Open a Test Session</h2>
+      <p class="muted">Choose a <code>TestSession.yaml</code> to load, validate, and run.</p>
+      <div class="row">
+        <button onclick="browse()">Browse…</button>
+        <input id="pathInput" placeholder="…or paste a path to a .yaml" style="flex:1;min-width:280px">
+        <button class="ghost" onclick="loadPath()">Load</button>
+      </div>
+      <div id="loadErr" class="muted" style="margin-top:10px;color:var(--fail);white-space:pre-wrap"></div>
+    </div>
+  </section>
+
+  <!-- OVERVIEW -->
+  <section id="overview" class="hidden">
+    <div class="card">
+      <div class="row">
+        <h2 id="ovName" style="margin:0;flex:1"></h2>
+      </div>
+      <div class="muted" style="margin:6px 0">
+        App: <code id="ovApp"></code> · AI: <span id="ovProvider"></span> ·
+        <span id="ovTotals"></span>
+      </div>
+      <div class="row" style="margin:8px 0 4px">
+        <input id="searchBox" placeholder="🔍 Search id, name, description, tag…" style="flex:1;min-width:240px" oninput="applySearch()">
+        <button class="ghost" onclick="checkAll(true)">Check all</button>
+        <button class="ghost" onclick="checkAll(false)">Uncheck all</button>
+        <button class="ghost" onclick="collapseAll(true)">Collapse</button>
+        <button class="ghost" onclick="collapseAll(false)">Expand</button>
+        <span class="muted" id="selCount"></span>
+      </div>
+      <div class="tree" id="ovTree"></div>
+    </div>
+    <div class="card">
+      <h3 style="margin-top:0">Run settings</h3>
+      <div class="row">
+        <label>Provider <select id="optProvider"><option value="">(from session)</option><option>claude</option><option>codex</option><option>cursor</option></select></label>
+        <label>Filter <input id="optFilter" placeholder="glob: TC-* / tag" style="width:140px"></label>
+        <label><input type="checkbox" id="optFailFast"> fail-fast</label>
+        <label><input type="checkbox" id="optEmbed"> embed report</label>
+      </div>
+      <div class="row" style="margin-top:12px">
+        <button id="btnRunSel" onclick="run(true)">▶ Run</button>
+        <button class="ghost" onclick="run(false)">▶ Run all</button>
+        <button class="ghost" id="btnCancel" onclick="cancel()" disabled>■ Cancel</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- LIVE -->
+  <section id="live" class="hidden">
+    <div class="card">
+      <div class="row">
+        <button class="ghost" onclick="backToSession()">← Back to session</button>
+        <span id="liveBanner"></span>
+        <div style="flex:1"></div>
+        <button class="ghost" id="btnRerunFailed" onclick="rerunFailed()" disabled>↻ Re-run failed</button>
+        <button class="ghost" id="btnRerunAll" onclick="run(false)" disabled>↻ Re-run all</button>
+        <button class="ghost" id="btnReport" onclick="openReport()" disabled>Open report.html</button>
+        <button class="ghost" id="btnFolder" onclick="openFolder()" disabled>Open folder</button>
+        <button class="ghost" id="btnCancel2" onclick="cancel()" disabled>■ Cancel</button>
+      </div>
+      <div class="counts">
+        <div class="count"><b id="cTotal">0</b><small>total</small></div>
+        <div class="count passed"><b id="cPass">0</b><small>passed</small></div>
+        <div class="count failed"><b id="cFail">0</b><small>failed</small></div>
+        <div class="count errors"><b id="cErr">0</b><small>errors</small></div>
+      </div>
+      <div class="progress"><div id="bar"></div></div>
+      <div class="active"><span class="muted">Active:</span> <span id="activeStep">—</span></div>
+    </div>
+
+    <div class="grid">
+      <div>
+        <div class="card"><h3 style="margin-top:0">Cases</h3><div class="caselist" id="caseList"></div></div>
+        <div class="card shot"><h3 style="margin-top:0">Live screenshot</h3><img id="liveShot" alt="(waiting…)"></div>
+      </div>
+      <div>
+        <div class="card feed"><h3 style="margin-top:0">Assertions</h3><div id="feed"></div></div>
+        <div class="card"><h3 style="margin-top:0">Log</h3><div class="log" id="log"></div></div>
+      </div>
+    </div>
+  </section>
+
+</div>
+
+<script>
+let totalCases=0, done=0, pass=0, fail=0, err=0;
+
+function show(id){for(const s of ['picker','overview','live'])document.getElementById(s).classList.toggle('hidden',s!==id);
+  document.getElementById('btnBack').style.display=(id==='picker')?'none':'inline-block';}
+function showPicker(){show('picker');}
+
+async function browse(){try{const p=await window.pickSession();if(p){document.getElementById('pathInput').value=p;loadPath();}}catch(e){}}
+function loadPath(){const p=document.getElementById('pathInput').value.trim();if(p)doLoad(p);}
+window.uitestPreload=function(p){document.getElementById('pathInput').value=p;doLoad(p);};
+
+async function doLoad(path){
+  const errEl=document.getElementById('loadErr');errEl.textContent='';
+  caseStatus={}; // fresh session => clear prior pass/fail marks
+  try{
+    const s=await window.loadSession(path);
+    document.getElementById('title').textContent=s.name;
+    document.getElementById('ovName').textContent=s.name;
+    document.getElementById('ovApp').textContent=s.app;
+    document.getElementById('ovProvider').textContent=s.provider;
+    document.getElementById('ovTotals').textContent=`${s.totals.cases} cases · ${s.totals.steps} steps · ${s.totals.asserts} asserts`;
+    const tree=document.getElementById('ovTree');tree.innerHTML='';
+    document.getElementById('searchBox').value='';
+    renderNode(buildTree(s.cases), tree);
+    updateSelCount();updateFolderStates();
+    show('overview');
+  }catch(e){errEl.textContent='Validation failed:\n'+(e&&e.message?e.message:e);}
+}
+
+// --- folder tree --------------------------------------------------------
+function buildTree(cases){
+  const root={name:'',folders:{},order:[],cases:[]};
+  for(const c of cases){
+    const parts=String(c.folder||'').split('/').map(s=>s.trim()).filter(Boolean);
+    let node=root;
+    for(const p of parts){
+      if(!node.folders[p]){node.folders[p]={name:p,folders:{},order:[],cases:[]};node.order.push(p);}
+      node=node.folders[p];
+    }
+    node.cases.push(c);
+  }
+  return root;
+}
+function renderNode(node,container){
+  for(const key of node.order){
+    const f=node.folders[key];
+    const fEl=document.createElement('div');fEl.className='folder';
+    const head=document.createElement('div');head.className='folder-head';
+    head.innerHTML=`<span class="fc-toggle">▾</span>`+
+      `<input type="checkbox" class="folderChk" checked onchange="onFolderToggle(this)">`+
+      `<span class="folder-name">📁 ${esc(f.name)}</span> <span class="fcount"></span>`;
+    head.addEventListener('click',e=>{
+      if(e.target.tagName==='INPUT')return;
+      fEl.classList.toggle('collapsed');
+      head.querySelector('.fc-toggle').textContent=fEl.classList.contains('collapsed')?'▸':'▾';
+    });
+    const children=document.createElement('div');children.className='folder-children';
+    fEl.appendChild(head);fEl.appendChild(children);
+    container.appendChild(fEl);
+    renderNode(f,children);
+    head.querySelector('.fcount').textContent='('+children.querySelectorAll('.case').length+')';
+  }
+  for(const c of node.cases)container.appendChild(makeCaseEl(c));
+}
+function makeCaseEl(c){
+  const d=document.createElement('div');d.className='case';
+  d.dataset.search=((c.id||'')+' '+(c.name||'')+' '+(c.description||'')+' '+((c.tags||[]).join(' '))).toLowerCase();
+  const tags=(c.tags||[]).map(t=>`<span class="tag">${esc(t)}</span>`).join('');
+  d.innerHTML=`<label class="caseSel"><input type="checkbox" class="caseChk" value="${esc(c.id)}" checked onchange="onCaseToggle()"> <span class="cstat" data-id="${esc(c.id)}"></span><b>${esc(c.id)}</b> — ${esc(c.name)} ${tags}</label>`;
+  const prev=caseStatus[c.id];if(prev)d.querySelector('.cstat').innerHTML=`<span class="chip ${prev}">${prev}</span> `;
+  if(c.description)d.innerHTML+=`<div class="step" style="font-style:italic">${esc(c.description)}</div>`;
+  for(const st of (c.steps||[]))d.innerHTML+=`<div class="step">· ${esc(st)}</div>`;
+  for(const a of (c.asserts||[]))d.innerHTML+=`<div class="step">✓ ${esc(a)}</div>`;
+  return d;
+}
+
+// --- selection ----------------------------------------------------------
+function selectedIds(){return Array.from(document.querySelectorAll('.caseChk:checked')).map(c=>c.value);}
+function onCaseToggle(){updateSelCount();updateFolderStates();}
+function onFolderToggle(chk){
+  const folder=chk.closest('.folder');
+  folder.querySelectorAll('.caseChk').forEach(c=>c.checked=chk.checked);
+  folder.querySelectorAll('.folderChk').forEach(f=>{f.checked=chk.checked;f.indeterminate=false;});
+  updateSelCount();updateFolderStates();
+}
+function checkAll(on){
+  document.querySelectorAll('.caseChk').forEach(c=>c.checked=on);
+  updateSelCount();updateFolderStates();
+}
+function updateFolderStates(){
+  document.querySelectorAll('#ovTree .folder').forEach(folder=>{
+    const chk=folder.querySelector(':scope > .folder-head > .folderChk');
+    if(!chk)return;
+    const boxes=Array.from(folder.querySelectorAll('.caseChk'));
+    const on=boxes.filter(b=>b.checked).length;
+    chk.checked=boxes.length>0&&on===boxes.length;
+    chk.indeterminate=on>0&&on<boxes.length;
+  });
+}
+function updateSelCount(){
+  const total=document.querySelectorAll('.caseChk').length;
+  const sel=selectedIds().length;
+  document.getElementById('selCount').textContent=`${sel} of ${total} selected`;
+  document.getElementById('btnRunSel').disabled=(sel===0);
+}
+
+// --- search & collapse --------------------------------------------------
+function collapseAll(on){
+  document.querySelectorAll('#ovTree .folder').forEach(f=>{
+    f.classList.toggle('collapsed',on);
+    const t=f.querySelector(':scope > .folder-head > .fc-toggle');if(t)t.textContent=on?'▸':'▾';
+  });
+}
+function applySearch(){
+  const q=document.getElementById('searchBox').value.trim().toLowerCase();
+  document.querySelectorAll('#ovTree .case').forEach(el=>{
+    el.style.display=(!q||el.dataset.search.includes(q))?'':'none';
+  });
+  document.querySelectorAll('#ovTree .folder').forEach(folder=>{
+    const visible=Array.from(folder.querySelectorAll('.case')).some(c=>c.style.display!=='none');
+    folder.style.display=visible?'':'none';
+    if(q&&visible){
+      folder.classList.remove('collapsed');
+      const t=folder.querySelector(':scope > .folder-head > .fc-toggle');if(t)t.textContent='▾';
+    }
+  });
+}
+
+let caseStatus={}; // id -> last run status, persisted across runs
+
+// run(true)=checked cases, run(false)=all cases.
+function run(selectedOnly){
+  const cases=selectedOnly?selectedIds():[];
+  if(selectedOnly&&cases.length===0){logline('select at least one case to run');return;}
+  startRunWith(cases);
+}
+// rerunFailed re-runs only the cases that failed/errored in the last run.
+function rerunFailed(){
+  const ids=Object.keys(caseStatus).filter(id=>caseStatus[id]==='failed'||caseStatus[id]==='error');
+  if(!ids.length){logline('no failed cases to re-run');return;}
+  startRunWith(ids);
+}
+function startRunWith(cases){
+  // Which ids will actually run (empty = all checkboxes present).
+  const runIds=(cases&&cases.length)?cases:Array.from(document.querySelectorAll('.caseChk')).map(c=>c.value);
+  runIds.forEach(id=>{caseStatus[id]='running';setOverviewStatus(id,'running');});
+
+  totalCases=done=pass=fail=err=0;
+  document.getElementById('caseList').innerHTML='';
+  document.getElementById('feed').innerHTML='';
+  document.getElementById('log').textContent='';
+  document.getElementById('liveBanner').innerHTML='<span class="chip running">running</span>';
+  for(const b of ['btnReport','btnFolder','btnRerunAll','btnRerunFailed'])document.getElementById(b).disabled=true;
+  setCancel(true);
+  show('live');
+  const opts={provider:document.getElementById('optProvider').value,filter:document.getElementById('optFilter').value,
+    failFast:document.getElementById('optFailFast').checked,embed:document.getElementById('optEmbed').checked,cases:cases};
+  window.startRun(JSON.stringify(opts)).catch(e=>logline('error: '+e));
+}
+function backToSession(){show('overview');}
+function setOverviewStatus(id,status){
+  const span=document.querySelector('#ovTree .cstat[data-id="'+cssAttr(id)+'"]');
+  if(span)span.innerHTML=`<span class="chip ${status}">${status}</span> `;
+}
+function cssAttr(s){return String(s).replace(/"/g,'\\"');}
+function cancel(){window.cancelRun();logline('cancel requested…');}
+function setCancel(on){for(const b of ['btnCancel','btnCancel2'])document.getElementById(b).disabled=!on;}
+function openReport(){window.openReport().catch(e=>logline('open report failed: '+e));}
+function openFolder(){window.openOutputDir().catch(e=>logline('open folder failed: '+e));}
+
+const caseEls={};
+function caseEl(id){
+  if(caseEls[id])return caseEls[id];
+  const d=document.createElement('div');d.className='ci';
+  d.innerHTML=`<span class="chip pending">pending</span><span class="nm">${esc(id)}</span><span class="dur muted"></span>`;
+  document.getElementById('caseList').appendChild(d);caseEls[id]=d;return d;
+}
+function setCaseChip(id,status,dur){const d=caseEl(id);const c=d.querySelector('.chip');c.className='chip '+status;c.textContent=status;
+  if(dur)d.querySelector('.dur').textContent=dur+'ms';}
+
+window.uitestEvent=function(e){
+  switch(e.type){
+    case 'run.started':
+      totalCases=e.total||0;document.getElementById('cTotal').textContent=totalCases;
+      logline('▶ '+e.session+' — '+totalCases+' case(s)');break;
+    case 'case.started':
+      caseEl(e.caseId);setCaseChip(e.caseId,'running');break;
+    case 'step.started':
+      document.getElementById('activeStep').textContent=`[${e.caseId}] ${e.human||''}`;break;
+    case 'screenshot.captured':
+      if(e.path)document.getElementById('liveShot').src='/art/'+e.path+'?t='+Date.now();break;
+    case 'assert.finished':
+      addAssert(e);break;
+    case 'case.finished':
+      done++;if(e.status==='passed')pass++;else if(e.status==='failed')fail++;else if(e.status==='error')err++;
+      caseStatus[e.caseId]=e.status;
+      setCaseChip(e.caseId,e.status,e.durationMs);
+      setOverviewStatus(e.caseId,e.status);
+      refreshCounts();break;
+    case 'run.finished':
+      finishRun(e.status);break;
+    case 'log':
+      if(e.level!=='debug'&&e.level!=='trace')logline('['+e.level+'] '+e.message);break;
+  }
+};
+window.uitestReport=function(reportPath,outDir){
+  document.getElementById('btnReport').disabled=false;
+  document.getElementById('btnFolder').disabled=false;
+  logline('report: '+reportPath);
+};
+
+function addAssert(e){
+  const d=document.createElement('div');d.className='af '+e.status;
+  d.innerHTML=`<span class="chip ${e.status}">${e.status}</span>
+    <div class="q">Q: ${esc(e.question||'')} <span class="muted">— expect ${esc(e.expect||'yes')}</span></div>
+    <div class="muted">AI: ${esc((e.rawAnswer||'').replace(/\n/g,' ').slice(0,160))} → verdict ${e.verdict}</div>
+    <div class="cmp">
+      <div><h5>expected</h5>${e.expectedPath?`<img src="/art/${esc(e.expectedPath)}">`:'<div class="muted">—</div>'}</div>
+      <div><h5>actual</h5>${e.actualPath?`<img src="/art/${esc(e.actualPath)}">`:'<div class="muted">—</div>'}</div>
+    </div>`;
+  document.getElementById('feed').prepend(d);
+}
+function refreshCounts(){
+  document.getElementById('cPass').textContent=pass;
+  document.getElementById('cFail').textContent=fail;
+  document.getElementById('cErr').textContent=err;
+  document.getElementById('bar').style.width=(totalCases?Math.round(done/totalCases*100):0)+'%';
+}
+function finishRun(status){
+  setCancel(false);
+  const ok=(status!=='failed');
+  document.getElementById('liveBanner').innerHTML=ok?'<span class="banner pass">● PASS</span>':'<span class="banner fail">● FAIL</span>';
+  document.getElementById('btnRerunAll').disabled=false;
+  const anyFailed=Object.values(caseStatus).some(s=>s==='failed'||s==='error');
+  document.getElementById('btnRerunFailed').disabled=!anyFailed;
+  logline('finished: '+status);
+}
+function logline(s){const l=document.getElementById('log');l.textContent+=s+'\n';l.scrollTop=l.scrollHeight;}
+function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
+</script>
+</body>
+</html>

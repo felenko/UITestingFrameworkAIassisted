@@ -1,0 +1,234 @@
+//go:build windows
+
+package platform
+
+import (
+	"fmt"
+	"path/filepath"
+	"regexp"
+	"strings"
+	"syscall"
+	"time"
+	"unsafe"
+)
+
+func errno(op string, err error) error {
+	if err == nil {
+		return fmt.Errorf("%s failed", op)
+	}
+	return fmt.Errorf("%s: %w", op, err)
+}
+
+// winWindow implements Window.
+type winWindow struct {
+	hwnd  uintptr
+	title string
+}
+
+func (w *winWindow) Title() string   { return w.title }
+func (w *winWindow) Handle() uintptr { return w.hwnd }
+
+func (w *winWindow) Bounds() (Bounds, error) {
+	var r rect
+	res, _, err := procGetWindowRect.Call(w.hwnd, uintptr(unsafe.Pointer(&r)))
+	if res == 0 {
+		return Bounds{}, errno("GetWindowRect", err)
+	}
+	return Bounds{
+		X:      int(r.Left),
+		Y:      int(r.Top),
+		Width:  int(r.Right - r.Left),
+		Height: int(r.Bottom - r.Top),
+	}, nil
+}
+
+func getWindowText(hwnd uintptr) string {
+	n, _, _ := procGetWindowTextLengthW.Call(hwnd)
+	if n == 0 {
+		return ""
+	}
+	buf := make([]uint16, n+1)
+	procGetWindowTextW.Call(hwnd, uintptr(unsafe.Pointer(&buf[0])), uintptr(len(buf)))
+	return syscall.UTF16ToString(buf)
+}
+
+func getClassName(hwnd uintptr) string {
+	buf := make([]uint16, 256)
+	procGetClassNameW.Call(hwnd, uintptr(unsafe.Pointer(&buf[0])), uintptr(len(buf)))
+	return syscall.UTF16ToString(buf)
+}
+
+func windowPID(hwnd uintptr) uint32 {
+	var pid uint32
+	procGetWindowThreadProcessId.Call(hwnd, uintptr(unsafe.Pointer(&pid)))
+	return pid
+}
+
+func processName(hwnd uintptr) string {
+	pid := windowPID(hwnd)
+	if pid == 0 {
+		return ""
+	}
+	h, _, _ := procOpenProcess.Call(processQueryLimitedInformation, 0, uintptr(pid))
+	if h == 0 {
+		return ""
+	}
+	defer procCloseHandle.Call(h)
+	buf := make([]uint16, 1024)
+	size := uint32(len(buf))
+	res, _, _ := procQueryFullProcessImageName.Call(h, 0,
+		uintptr(unsafe.Pointer(&buf[0])), uintptr(unsafe.Pointer(&size)))
+	if res == 0 {
+		return ""
+	}
+	full := syscall.UTF16ToString(buf[:size])
+	return filepath.Base(full)
+}
+
+type candidate struct {
+	hwnd  uintptr
+	title string
+}
+
+// enumWindows returns all visible top-level windows that have a title.
+func enumWindows() []candidate {
+	var found []candidate
+	cb := syscall.NewCallback(func(hwnd uintptr, _ uintptr) uintptr {
+		if vis, _, _ := procIsWindowVisible.Call(hwnd); vis == 0 {
+			return 1
+		}
+		title := getWindowText(hwnd)
+		if title == "" {
+			return 1
+		}
+		found = append(found, candidate{hwnd: hwnd, title: title})
+		return 1
+	})
+	procEnumWindows.Call(cb, 0)
+	return found
+}
+
+func (d *winDriver) FindWindow(q WindowQuery) (Window, error) {
+	strategy := q.Strategy
+	if strategy == "" {
+		switch {
+		case q.Process != "":
+			strategy = "process"
+		case q.Class != "":
+			strategy = "class"
+		default:
+			strategy = "title"
+		}
+	}
+
+	var titleRE *regexp.Regexp
+	if strategy == "title" && q.Title != "" {
+		if re, err := regexp.Compile("(?i)" + q.Title); err == nil {
+			titleRE = re
+		}
+	}
+
+	// Gather all matches, then prefer one owned by the launched process (q.PID)
+	// to disambiguate (e.g. "Notepad" also matching a "Notepad++" window).
+	var matches []candidate
+	for _, c := range enumWindows() {
+		switch strategy {
+		case "title":
+			if matchTitle(c.title, q.Title, titleRE) {
+				matches = append(matches, c)
+			}
+		case "process":
+			if strings.EqualFold(processName(c.hwnd), q.Process) {
+				matches = append(matches, c)
+			}
+		case "class":
+			if strings.EqualFold(getClassName(c.hwnd), q.Class) {
+				matches = append(matches, c)
+			}
+		}
+	}
+
+	if len(matches) == 0 {
+		return nil, fmt.Errorf("no window matched %s", describeQuery(q, strategy))
+	}
+	if q.PID != 0 {
+		for _, c := range matches {
+			if windowPID(c.hwnd) == q.PID {
+				return &winWindow{hwnd: c.hwnd, title: c.title}, nil
+			}
+		}
+	}
+	return &winWindow{hwnd: matches[0].hwnd, title: matches[0].title}, nil
+}
+
+func matchTitle(title, want string, re *regexp.Regexp) bool {
+	if strings.Contains(strings.ToLower(title), strings.ToLower(want)) {
+		return true
+	}
+	return re != nil && re.MatchString(title)
+}
+
+func describeQuery(q WindowQuery, strategy string) string {
+	switch strategy {
+	case "process":
+		return fmt.Sprintf("process=%q", q.Process)
+	case "class":
+		return fmt.Sprintf("class=%q", q.Class)
+	default:
+		return fmt.Sprintf("title~=%q", q.Title)
+	}
+}
+
+func (d *winDriver) FocusWindow(w Window) error {
+	hwnd := w.Handle()
+	if iconic, _, _ := procIsIconic.Call(hwnd); iconic != 0 {
+		procShowWindow.Call(hwnd, swRestore)
+	} else {
+		procShowWindow.Call(hwnd, swShow)
+	}
+	procBringWindowToTop.Call(hwnd)
+	// Attach to the foreground thread to defeat focus-stealing prevention.
+	fg, _, _ := procGetForegroundWindow.Call()
+	var fgThread, ourThread uintptr
+	if fg != 0 {
+		fgThread, _, _ = procGetWindowThreadProcessId.Call(fg, 0)
+	}
+	ourThread, _, _ = procGetWindowThreadProcessId.Call(hwnd, 0)
+	if fgThread != 0 && fgThread != ourThread {
+		procAttachThreadInput.Call(fgThread, ourThread, 1)
+		defer procAttachThreadInput.Call(fgThread, ourThread, 0)
+	}
+	res, _, err := procSetForegroundWindow.Call(hwnd)
+	time.Sleep(50 * time.Millisecond)
+	if res == 0 {
+		// Not fatal: some windows refuse activation but are still usable.
+		_ = err
+	}
+	return nil
+}
+
+func (d *winDriver) CloseWindow(w Window) error {
+	res, _, err := procPostMessageW.Call(w.Handle(), wmClose, 0, 0)
+	if res == 0 {
+		return errno("PostMessage(WM_CLOSE)", err)
+	}
+	return nil
+}
+
+func (d *winDriver) MoveWindow(w Window, x, y int) error {
+	res, _, err := procSetWindowPos.Call(w.Handle(), 0,
+		uintptr(int32(x)), uintptr(int32(y)), 0, 0, swpNoZOrder|swpNoSize)
+	if res == 0 {
+		return errno("SetWindowPos(move)", err)
+	}
+	return nil
+}
+
+func (d *winDriver) ResizeWindow(w Window, width, height int) error {
+	res, _, err := procSetWindowPos.Call(w.Handle(), 0, 0, 0,
+		uintptr(int32(width)), uintptr(int32(height)), swpNoZOrder|swpNoMove)
+	if res == 0 {
+		return errno("SetWindowPos(resize)", err)
+	}
+	return nil
+}
