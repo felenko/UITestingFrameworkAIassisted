@@ -40,6 +40,7 @@ var (
 	procSetWindowPos            = user32.NewProc("SetWindowPos")
 	procAttachThreadInput       = user32.NewProc("AttachThreadInput")
 	procGetForegroundWindow     = user32.NewProc("GetForegroundWindow")
+	procSystemParametersInfo    = user32.NewProc("SystemParametersInfoW")
 
 	// Device context / capture.
 	procGetDC               = user32.NewProc("GetDC")
@@ -52,6 +53,7 @@ var (
 	procDeleteDC            = gdi32.NewProc("DeleteDC")
 	procGetDIBits           = gdi32.NewProc("GetDIBits")
 	procGetDeviceCaps       = gdi32.NewProc("GetDeviceCaps")
+	procPrintWindow         = user32.NewProc("PrintWindow")
 
 	// Process query.
 	procOpenProcess               = kernel32.NewProc("OpenProcess")
@@ -90,14 +92,19 @@ const (
 	swRestore = 9
 	swShow    = 5
 
+	vkMenu                      = 0x12 // ALT
+	spiSetForegroundLockTimeout = 0x2001
+	spifSendChange              = 0x2
+
 	swpNoZOrder = 0x0004
 	swpNoSize   = 0x0001
 	swpNoMove   = 0x0002
 
 	wmClose = 0x0010
 
-	srccopy   = 0x00CC0020
-	biRGB     = 0
+	srccopy            = 0x00CC0020
+	pwRenderFullContent = 0x00000002
+	biRGB              = 0
 	dibRGBColors = 0
 	logpixelsx   = 88
 

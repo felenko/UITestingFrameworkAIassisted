@@ -42,6 +42,8 @@ func (stubDriver) FocusWindow(Window) error              { return unsupported("F
 func (stubDriver) CloseWindow(Window) error              { return unsupported("CloseWindow") }
 func (stubDriver) MoveWindow(Window, int, int) error     { return unsupported("MoveWindow") }
 func (stubDriver) ResizeWindow(Window, int, int) error   { return unsupported("ResizeWindow") }
+func (stubDriver) WindowPID(Window) uint32               { return 0 }
 
 func (stubDriver) CaptureScreen() (image.Image, error)        { return nil, unsupported("CaptureScreen") }
 func (stubDriver) CaptureBounds(Bounds) (image.Image, error)  { return nil, unsupported("CaptureBounds") }
+func (stubDriver) CaptureWindow(Window) (image.Image, error)  { return nil, unsupported("CaptureWindow") }

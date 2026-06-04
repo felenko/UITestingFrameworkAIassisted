@@ -111,23 +111,68 @@ func (t *Target) Describe() string {
 	}
 }
 
-// ForAI is an AI polling/extraction sub-spec used by `wait.forAI` and
-// `readyWhen.forAI`.
-type ForAI struct {
-	Question  string    `yaml:"question"`
-	Target    *Target   `yaml:"target"`
-	PollEvery Duration  `yaml:"pollEvery"`
-	Timeout   Duration  `yaml:"timeout"`
-	Expect    string    `yaml:"expect"`
-}
-
 // WindowMatch describes how to find a window by title/process/class. Used by
 // `readyWhen.window` (where the YAML nests `{ title: ... }`).
 type WindowMatch struct {
 	Title   string `yaml:"title"`
 	Process string `yaml:"process"`
 	Class   string `yaml:"class"`
+	Gone    bool   `yaml:"gone"` // condition is satisfied when the window is ABSENT
 }
+
+// UIAQuery locates a control via the UI Automation tree (Phase 2). Used for
+// `uia:` targeting and inside a UIA condition.
+type UIAQuery struct {
+	AutomationID string `yaml:"automationId"`
+	Name         string `yaml:"name"`
+	ControlType  string `yaml:"controlType"`
+}
+
+// IsZero reports whether no UIA selector was provided.
+func (q *UIAQuery) IsZero() bool {
+	return q == nil || (q.AutomationID == "" && q.Name == "" && q.ControlType == "")
+}
+
+// UIACondition checks a UIA element's existence/state (Phase 2).
+type UIACondition struct {
+	UIAQuery `yaml:",inline"`
+	State    string `yaml:"state"` // exists | enabled | selected
+	Value    string `yaml:"value"` // element value must equal this
+}
+
+// Condition is a cost-ordered, ladder-aware check used by `waitBefore`,
+// `verify`, `wait.forAI`, and `readyWhen.forAI`. All present rungs must hold;
+// the runner evaluates the cheapest rungs first and only invokes the AI
+// (`question`) when it is the declared check or as the escalation rung.
+type Condition struct {
+	// Cheap rungs (no AI cost).
+	Window  *WindowMatch  `yaml:"window"`  // a window must exist (or be gone)
+	Changed bool          `yaml:"changed"` // the target region must have changed since acting
+	Stable  bool          `yaml:"stable"`  // the target region must be visually settled
+	UIA     *UIACondition `yaml:"uia"`     // a UIA element state (Phase 2)
+
+	// Rich rung (AI vision).
+	Question string `yaml:"question"`
+	Expect   string `yaml:"expect"`
+
+	// Shared.
+	Target    *Target  `yaml:"target"`
+	PollEvery Duration `yaml:"pollEvery"`
+	Timeout   Duration `yaml:"timeout"`
+}
+
+// IsZero reports whether the condition declares no rung.
+func (c *Condition) IsZero() bool {
+	if c == nil {
+		return true
+	}
+	return c.Window == nil && !c.Changed && !c.Stable && c.UIA == nil && c.Question == ""
+}
+
+// ForAI is the AI polling/extraction sub-spec used by `wait.forAI` and
+// `readyWhen.forAI`. It is an alias of Condition so those keep working while
+// gaining the cheaper rungs.
+type ForAI = Condition
 
 // ReadyWhen describes how the runner knows the app is ready.
 type ReadyWhen struct {

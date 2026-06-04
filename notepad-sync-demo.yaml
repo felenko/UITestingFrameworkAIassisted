@@ -1,0 +1,86 @@
+version: 1
+session:
+  name: "Notepad self-correcting demo"
+  description: >
+    Demonstrates the closed-loop synchronization: actions wait for the UI to be
+    ready/stable before acting and the runner only proceeds once the expected
+    effect is observed. The Save case gates typing on the Save dialog actually
+    appearing (waitBefore), so a slow dialog can't desync the sequence.
+  application:
+    path: 'C:\Windows\System32\notepad.exe'
+    startupTimeout: 12s
+    readyWhen:
+      window: { title: "Untitled - Notepad" }
+    shutdown: graceful
+  ai:
+    provider: claude
+    timeout: 60s
+  settings:
+    coordinateSpace: window
+    windowMatch: title
+    autoSettle: true          # wait for stability before each action
+    settleTimeout: 6s
+    defaultActionRetries: 3
+    aiEscalation: true
+
+variables:
+  greeting: "Hello from the UI Testing Framework!"
+
+testCases:
+  - id: TC-TYPE
+    name: "Typed text appears (with auto-settle)"
+    folder: "Editor"
+    tags: [smoke]
+    steps:
+      - human: "Focus the fresh Notepad window"
+        machine:
+          action: focus_window
+          target: { window: "Untitled - Notepad" }
+      - human: "Type the greeting once the editor is stable"
+        machine:
+          action: type_text
+          text: "${greeting}"
+          waitBefore: { stable: true }
+    validation:
+      human: "The greeting is visible in the editor."
+      assert:
+        - id: greeting-visible
+          human: "Greeting visible"
+          action: assert_ai
+          question: 'Does the Notepad editing area contain the text "Hello from the UI Testing Framework!"?'
+          target: { window: "Untitled - Notepad" }
+          expect: yes
+
+  - id: TC-SAVE
+    name: "Save dialog gating (waitBefore window)"
+    folder: "Editor/Dialogs"
+    tags: [dialog]
+    setup:
+      - human: "Focus the editor"
+        machine:
+          action: focus_window
+          target: { window: "Notepad" }
+    steps:
+      - human: "Press Ctrl+S to open the Save dialog"
+        machine:
+          action: key_press
+          keys: "Ctrl+S"
+      - human: "Type a filename — but only once the Save dialog has actually appeared"
+        machine:
+          action: type_text
+          text: "uitest-demo.txt"
+          waitBefore: { window: { title: "Save" } }
+    validation:
+      human: "A Save dialog is open showing the typed filename."
+      assert:
+        - id: save-dialog
+          human: "Save dialog with filename"
+          action: assert_ai
+          question: "Is a Save dialog open, and does its file-name field contain 'uitest-demo.txt'?"
+          target: screen
+          expect: yes
+    teardown:
+      - human: "Cancel the Save dialog"
+        machine:
+          action: key_press
+          keys: "Esc"

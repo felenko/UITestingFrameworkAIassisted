@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"time"
 
 	"github.com/felenko/uitest/internal/core/platform"
@@ -74,7 +75,7 @@ func (r *Runner) waitForReady(ctx context.Context, app session.Application) erro
 			}
 		}
 		if rw.ForAI != nil {
-			ok, _ := r.pollAI(ctx, rw.ForAI, deadline)
+			ok, _ := r.pollCondition(ctx, rw.ForAI, rw.ForAI.Target, nil, deadline)
 			if ok {
 				return nil
 			}
@@ -139,12 +140,27 @@ func (r *Runner) shutdownApp() {
 }
 
 func (r *Runner) killApp() {
-	if r.app == nil || r.app.cmd.Process == nil {
-		return
+	ourPID := 0
+	if r.app != nil && r.app.cmd.Process != nil {
+		ourPID = r.app.cmd.Process.Pid
 	}
-	r.logf("info", "terminating app process")
-	_ = r.app.cmd.Process.Kill()
-	_, _ = r.app.cmd.Process.Wait()
+	// SAFETY: only force-kill the window's process when it is the very process we
+	// launched. Single-instance apps (e.g. Win11 tabbed Notepad) merge our launch
+	// into a pre-existing user process; force-killing that would destroy the
+	// user's other windows/unsaved work. In that case we never kill the foreign
+	// process — we only close our own.
+	if r.currentWindow != nil && ourPID != 0 {
+		if pid := r.drv.WindowPID(r.currentWindow); pid != 0 && int(pid) == ourPID {
+			r.logf("info", "terminating app process (pid %d)", pid)
+			_ = exec.Command("taskkill", "/PID", strconv.Itoa(int(pid)), "/T", "/F").Run()
+		} else if pid != 0 && int(pid) != ourPID {
+			r.logf("warn", "window is owned by a different process (pid %d, not our %d) — not force-killing; leaving it open", pid, ourPID)
+		}
+	}
+	if ourPID != 0 {
+		_ = r.app.cmd.Process.Kill()
+		_, _ = r.app.cmd.Process.Wait()
+	}
 }
 
 func (r *Runner) waitExit(d time.Duration) bool {

@@ -134,6 +134,51 @@ Key names follow a documented table (`Enter`, `Tab`, `Esc`, `F1`..`F12`, `Up/Dow
 | `assert_ai` | `question`, `target`, `expect=yes`, `provider?`, `retries?` | **The assertion.** Capture target, ask the AI the question, parse yes/no, compare to `expect`. |
 | `read_text_ai` | `question`, `target`, `store` | Ask the AI to extract a value (e.g., a displayed number) and store it in a variable for later steps/assertions. |
 
+### 3.5 Synchronization & self-correction (closed-loop actions)
+
+The biggest source of flakiness in input-driven UI testing is **timing**: if the app is busy and
+the first click doesn't register (or a dialog opens late), every following action lands on the
+wrong target. To prevent that cascade, any **actuation** command may be wrapped with a
+cost-ordered loop — *wait-until-ready → act → did-it-work → retry just this action* — escalating
+to the AI only when cheap checks can't decide.
+
+| Field | Applies to | Meaning |
+| --- | --- | --- |
+| `waitBefore` | any actuation | A **condition** that must hold before acting (poll until true or timeout). |
+| `verify` | any actuation | A **condition** that must hold *after* acting; if not, the action is retried. |
+| `actionRetries` | any actuation | Re-attempts of this action when `verify` fails (default `settings.defaultActionRetries`). |
+| `uia` | mouse/keyboard | Locate the target via the UI Automation tree (Phase 2). |
+| `find` | mouse/keyboard | Locate the target by natural-language AI search (Phase 3). |
+
+A **condition** (used by `waitBefore`, `verify`, and `wait.forAI`) carries one or more *rungs*,
+evaluated cheapest-first; all present rungs must hold:
+
+| Rung | Cost | Meaning |
+| --- | --- | --- |
+| `window: { title\|process\|class, gone }` | free | A window is present (or absent, with `gone: true`). |
+| `stable: true` | free | The target region has stopped changing (animations/spinners done). |
+| `changed: true` | free | The target region changed since the action (it registered). |
+| `uia: { automationId\|name\|controlType, state, value }` | free | A control's state (Phase 2). |
+| `question: "..."` (+ `expect`) | AI call | An AI vision yes/no — used when it's the declared check, or as escalation. |
+
+**Defaults (cost-minimizing).** With `settings.autoSettle` on (default), the runner waits for the
+target to be visually **stable** before each action and, for `mouse_click`/`mouse_drag`/
+`mouse_scroll`, auto-verifies that the click **changed** something — re-clicking up to
+`defaultActionRetries` if not. Typing and key chords are **never** auto-retried (re-sending would
+duplicate input); add an explicit `verify` if you want them gated. The AI is invoked only for
+conditions that carry a `question`, or — when `settings.aiEscalation` is on — once at the end to
+**diagnose** why an action never took effect (the diagnosis is recorded in the report).
+
+```yaml
+- human: "Click Save and confirm the Save dialog opens"
+  machine:
+    action: mouse_click
+    target: { x: 412, y: 88 }
+    waitBefore: { stable: true }                 # don't click mid-animation
+    verify:     { window: { title: "Save As" } } # re-click until the dialog appears
+    actionRetries: 3
+```
+
 ---
 
 ## 4. The AI assertion engine

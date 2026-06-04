@@ -181,30 +181,46 @@ func describeQuery(q WindowQuery, strategy string) string {
 
 func (d *winDriver) FocusWindow(w Window) error {
 	hwnd := w.Handle()
-	if iconic, _, _ := procIsIconic.Call(hwnd); iconic != 0 {
-		procShowWindow.Call(hwnd, swRestore)
-	} else {
-		procShowWindow.Call(hwnd, swShow)
+	// Disable the foreground-lock timeout so SetForegroundWindow is allowed.
+	procSystemParametersInfo.Call(spiSetForegroundLockTimeout, 0, 0, spifSendChange)
+
+	for attempt := 0; attempt < 5; attempt++ {
+		if iconic, _, _ := procIsIconic.Call(hwnd); iconic != 0 {
+			procShowWindow.Call(hwnd, swRestore)
+		} else {
+			procShowWindow.Call(hwnd, swShow)
+		}
+		procBringWindowToTop.Call(hwnd)
+
+		// Attach to the current foreground thread's input queue so focus can be
+		// transferred despite focus-stealing prevention.
+		fg, _, _ := procGetForegroundWindow.Call()
+		var fgThread, ourThread uintptr
+		if fg != 0 {
+			fgThread, _, _ = procGetWindowThreadProcessId.Call(fg, 0)
+		}
+		ourThread, _, _ = procGetWindowThreadProcessId.Call(hwnd, 0)
+		attached := false
+		if fgThread != 0 && fgThread != ourThread {
+			if r, _, _ := procAttachThreadInput.Call(fgThread, ourThread, 1); r != 0 {
+				attached = true
+			}
+		}
+		procSetForegroundWindow.Call(hwnd)
+		if attached {
+			procAttachThreadInput.Call(fgThread, ourThread, 0)
+		}
+
+		time.Sleep(60 * time.Millisecond)
+		if cur, _, _ := procGetForegroundWindow.Call(); cur == hwnd {
+			return nil // activated
+		}
 	}
-	procBringWindowToTop.Call(hwnd)
-	// Attach to the foreground thread to defeat focus-stealing prevention.
-	fg, _, _ := procGetForegroundWindow.Call()
-	var fgThread, ourThread uintptr
-	if fg != 0 {
-		fgThread, _, _ = procGetWindowThreadProcessId.Call(fg, 0)
-	}
-	ourThread, _, _ = procGetWindowThreadProcessId.Call(hwnd, 0)
-	if fgThread != 0 && fgThread != ourThread {
-		procAttachThreadInput.Call(fgThread, ourThread, 1)
-		defer procAttachThreadInput.Call(fgThread, ourThread, 0)
-	}
-	res, _, err := procSetForegroundWindow.Call(hwnd)
-	time.Sleep(50 * time.Millisecond)
-	if res == 0 {
-		// Not fatal: some windows refuse activation but are still usable.
-		_ = err
-	}
-	return nil
+	return fmt.Errorf("could not bring window %q to the foreground", w.Title())
+}
+
+func (d *winDriver) WindowPID(w Window) uint32 {
+	return windowPID(w.Handle())
 }
 
 func (d *winDriver) CloseWindow(w Window) error {

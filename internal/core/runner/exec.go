@@ -93,7 +93,7 @@ func (r *Runner) executeCommand(ctx context.Context, cmd *session.Command, sr *r
 		// fast apps don't drop characters, and let the queue drain afterwards.
 		perChar := time.Duration(cmd.PerCharDelayMs) * time.Millisecond
 		if perChar == 0 {
-			perChar = 10 * time.Millisecond
+			perChar = 25 * time.Millisecond // pace input so fast apps don't drop characters
 		}
 		if err := r.drv.TypeText(r.bag.Expand(cmd.Text), perChar); err != nil {
 			return err
@@ -145,7 +145,7 @@ func (r *Runner) executeCommand(ctx context.Context, cmd *session.Command, sr *r
 	case "wait":
 		if cmd.ForAI != nil {
 			deadline := time.Now().Add(r.scale(cmd.ForAI.Timeout.Or(30 * time.Second)))
-			ok, err := r.pollAI(ctx, cmd.ForAI, deadline)
+			ok, err := r.pollCondition(ctx, cmd.ForAI, cmd.ForAI.Target, nil, deadline)
 			if err != nil {
 				return err
 			}
@@ -211,36 +211,6 @@ func (r *Runner) executeCommand(ctx context.Context, cmd *session.Command, sr *r
 	default:
 		return fmt.Errorf("unsupported action %q", cmd.Action)
 	}
-}
-
-// pollAI repeatedly asks an AI question until it answers affirmatively or the
-// deadline passes (wait.forAI / readyWhen.forAI).
-func (r *Runner) pollAI(ctx context.Context, f *session.ForAI, deadline time.Time) (bool, error) {
-	poll := f.PollEvery.Or(time.Second)
-	for time.Now().Before(deadline) {
-		select {
-		case <-ctx.Done():
-			return false, ctx.Err()
-		default:
-		}
-		img, err := r.capture(f.Target)
-		if err != nil {
-			return false, err
-		}
-		name := fmt.Sprintf("poll-%d.png", time.Now().UnixNano())
-		rel, err := r.savePNG(img, name)
-		if err != nil {
-			return false, err
-		}
-		out := r.engine.AssertAI(ctx, ai.Request{
-			Question: r.bag.Expand(f.Question), ImagePath: r.absPath(rel), Expect: "yes",
-		})
-		if out.Err == nil && out.Verdict {
-			return true, nil
-		}
-		time.Sleep(r.scale(poll))
-	}
-	return false, nil
 }
 
 func (r *Runner) launchMidTest(ctx context.Context, cmd *session.Command) error {

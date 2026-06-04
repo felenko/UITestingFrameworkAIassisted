@@ -140,6 +140,13 @@ func (v *validator) checkCommand(where string, c *Command) {
 		v.add("%s: provider %q is not a known provider", where, c.Provider)
 	}
 
+	if c.WaitBefore != nil {
+		v.checkCondition(where+".waitBefore", c.WaitBefore)
+	}
+	if c.Verify != nil {
+		v.checkCondition(where+".verify", c.Verify)
+	}
+
 	switch c.Action {
 	case "mouse_move", "mouse_click", "mouse_down", "mouse_up", "mouse_scroll":
 		if !c.Target.IsPoint() {
@@ -179,8 +186,8 @@ func (v *validator) checkCommand(where string, c *Command) {
 		if c.MS.Duration == 0 && c.ForAI == nil {
 			v.add("%s: wait requires `ms` or `forAI`", where)
 		}
-		if c.ForAI != nil && strings.TrimSpace(c.ForAI.Question) == "" {
-			v.add("%s: wait.forAI requires a question", where)
+		if c.ForAI != nil {
+			v.checkCondition(where+".forAI", c.ForAI)
 		}
 	case "assert_ai":
 		if strings.TrimSpace(c.Question) == "" {
@@ -194,6 +201,18 @@ func (v *validator) checkCommand(where string, c *Command) {
 		if strings.TrimSpace(c.Store) == "" {
 			v.add("%s: read_text_ai requires `store`", where)
 		}
+	}
+}
+
+// checkCondition validates a waitBefore/verify/forAI condition: it must declare
+// at least one rung, and any AI rung needs a valid expect.
+func (v *validator) checkCondition(where string, c *Condition) {
+	if c.IsZero() {
+		v.add("%s: a condition needs at least one of window|changed|stable|uia|question", where)
+		return
+	}
+	if c.Question != "" {
+		v.checkExpect(where, c.Expect)
 	}
 }
 

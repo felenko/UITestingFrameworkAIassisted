@@ -57,8 +57,10 @@ type Driver interface {
 	CloseWindow(w Window) error
 	MoveWindow(w Window, x, y int) error
 	ResizeWindow(w Window, width, height int) error
+	WindowPID(w Window) uint32 // process that owns the window (may differ from a launcher PID)
 
 	// Capture.
 	CaptureScreen() (image.Image, error)
 	CaptureBounds(b Bounds) (image.Image, error)
+	CaptureWindow(w Window) (image.Image, error) // window's own pixels (occlusion-safe)
 }

@@ -84,6 +84,8 @@ type Machine struct {
 	Status     Status `json:"status"`
 	DurationMs int64  `json:"durationMs"`
 	Error      string `json:"error,omitempty"`
+	Attempts   int    `json:"attempts,omitempty"`   // action attempts made (1 = first try worked)
+	Diagnosis  string `json:"diagnosis,omitempty"`  // AI diagnosis captured after exhausted retries
 }
 
 // Validation is the check phase result.
