@@ -82,6 +82,13 @@ session:
     windowMatch: title        # default window match strategy: title | process | class
     coordinateSpace: window   # default relativeTo for targets: window | screen
     dpiAware: true
+
+    # --- self-correcting actuation (see 02 §3.5) ---
+    autoSettle: true          # wait for visual stability before each action; auto-verify clicks
+    settleTimeout: 5s         # max wait for readiness / verify
+    settleInterval: 250ms     # poll / stability sampling interval
+    defaultActionRetries: 2   # re-attempts of an action when verify fails
+    aiEscalation: true        # on exhausted retries, ask the AI to diagnose what's blocking
 ```
 
 ### Field reference — `application`
@@ -374,6 +381,27 @@ validation:
 ```
 
 ---
+
+### Synchronization fields (per command)
+
+Any actuation command may add `waitBefore`, `verify`, and `actionRetries` to make it
+self-correcting (full semantics in [02 §3.5](02-test-runner-spec.md#35-synchronization--self-correction-closed-loop-actions)):
+
+```yaml
+- human: "Open the File menu, waiting until it's actually shown"
+  machine:
+    action: mouse_click
+    target: { x: 24, y: 40 }
+    waitBefore: { stable: true }          # don't click while the UI is animating
+    verify:     { changed: true }         # re-click if the menu didn't open
+    actionRetries: 3
+
+- human: "Type the filename once the Save dialog is up"
+  machine:
+    action: type_text
+    text: "report.txt"
+    waitBefore: { window: { title: "Save As" } }   # wait for the dialog before typing
+```
 
 ## 6. Targets (recap)
 

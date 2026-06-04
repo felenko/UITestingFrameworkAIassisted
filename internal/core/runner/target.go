@@ -107,11 +107,9 @@ func (r *Runner) capture(t *session.Target) (image.Image, error) {
 		if err != nil {
 			return nil, err
 		}
-		b, err := w.Bounds()
-		if err != nil {
-			return nil, err
-		}
-		return r.drv.CaptureBounds(b)
+		// PrintWindow-based capture gets the window's own pixels even if it is
+		// occluded or not focused.
+		return r.drv.CaptureWindow(w)
 	}
 	// Point target isn't capturable; fall back to whole screen.
 	return r.drv.CaptureScreen()

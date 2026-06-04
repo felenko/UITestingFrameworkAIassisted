@@ -23,7 +23,12 @@ const (
 	DefaultShutdown       = "graceful"
 	DefaultWindowMatch    = "title"
 	DefaultCoordSpace     = "window"
+	DefaultSettleTimeout  = 5 * time.Second
+	DefaultSettleInterval = 250 * time.Millisecond
+	DefaultActionRetries  = 2
 )
+
+func boolPtr(b bool) *bool { return &b }
 
 // Load reads, parses, applies defaults, and validates a session file.
 func Load(path string) (*Session, error) {
@@ -88,6 +93,21 @@ func (s *Session) applyDefaults() {
 	}
 	if set.CoordinateSpace == "" {
 		set.CoordinateSpace = DefaultCoordSpace
+	}
+	if set.AutoSettle == nil {
+		set.AutoSettle = boolPtr(true)
+	}
+	if set.AIEscalation == nil {
+		set.AIEscalation = boolPtr(true)
+	}
+	if set.SettleTimeout.Duration == 0 {
+		set.SettleTimeout = D(DefaultSettleTimeout)
+	}
+	if set.SettleInterval.Duration == 0 {
+		set.SettleInterval = D(DefaultSettleInterval)
+	}
+	if set.DefaultActionRetries == 0 {
+		set.DefaultActionRetries = DefaultActionRetries
 	}
 
 	for i := range s.TestCases {

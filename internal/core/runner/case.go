@@ -129,8 +129,10 @@ func (r *Runner) runStepOnce(ctx context.Context, caseID, phase string, index in
 		cmd := &step.Machine[i]
 		mStart := time.Now()
 		mr := result.Machine{Action: cmd.Action, Summary: describeCommand(cmd)}
-		err := r.executeCommand(ctx, cmd, &sr, caseID)
+		attempts, diag, err := r.runCommand(ctx, cmd, &sr, caseID)
 		mr.DurationMs = time.Since(mStart).Milliseconds()
+		mr.Attempts = attempts
+		mr.Diagnosis = diag
 		if err != nil {
 			mr.Status = result.StatusError
 			mr.Error = err.Error()
@@ -142,6 +144,9 @@ func (r *Runner) runStepOnce(ctx context.Context, caseID, phase string, index in
 			break
 		}
 		mr.Status = result.StatusPassed
+		if attempts > 1 {
+			r.logf("info", "  step[%d] %s succeeded on attempt %d", index, cmd.Action, attempts)
+		}
 		sr.Machine = append(sr.Machine, mr)
 	}
 

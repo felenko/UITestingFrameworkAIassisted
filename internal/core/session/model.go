@@ -56,6 +56,13 @@ type Settings struct {
 	WindowMatch         string   `yaml:"windowMatch"`     // title | process | class
 	CoordinateSpace     string   `yaml:"coordinateSpace"` // window | screen
 	DPIAware            bool     `yaml:"dpiAware"`
+
+	// --- self-correcting actuation defaults ---
+	AutoSettle           *bool    `yaml:"autoSettle"`           // settle + auto-verify each action (default true)
+	SettleTimeout        Duration `yaml:"settleTimeout"`        // max wait for readiness/verify (default 5s)
+	SettleInterval       Duration `yaml:"settleInterval"`       // poll / stability interval (default 250ms)
+	DefaultActionRetries int      `yaml:"defaultActionRetries"` // action re-attempts when verify fails (default 2)
+	AIEscalation         *bool    `yaml:"aiEscalation"`         // AI diagnosis when cheap retries exhaust (default true)
 }
 
 // TestCase is a named scenario: ordered steps plus a final validation.
@@ -194,4 +201,11 @@ type Command struct {
 	Timeout  Duration  `yaml:"timeout"`
 	Retries  *int      `yaml:"retries"`
 	Samples  *int      `yaml:"samples"`
+
+	// --- self-correcting actuation (cost-ordered escalation) ---
+	UIA           *UIAQuery  `yaml:"uia"`           // locate via UI Automation (Phase 2)
+	Find          string     `yaml:"find"`          // locate via AI element search (Phase 3)
+	WaitBefore    *Condition `yaml:"waitBefore"`    // precondition: target ready before acting
+	Verify        *Condition `yaml:"verify"`        // postcondition: the action had its effect
+	ActionRetries *int       `yaml:"actionRetries"` // re-attempts of the action when Verify fails
 }
