@@ -149,8 +149,8 @@ func (v *validator) checkCommand(where string, c *Command) {
 
 	switch c.Action {
 	case "mouse_move", "mouse_click", "mouse_down", "mouse_up", "mouse_scroll":
-		if !c.Target.IsPoint() {
-			v.add("%s: %s requires a point target { x, y }", where, c.Action)
+		if !c.Target.IsPoint() && !hasLocator(c) {
+			v.add("%s: %s requires a point target { x, y } or a uia/find locator", where, c.Action)
 		}
 		if c.Action == "mouse_click" {
 			v.checkButton(where, c.Button)
@@ -214,6 +214,11 @@ func (v *validator) checkCondition(where string, c *Condition) {
 	if c.Question != "" {
 		v.checkExpect(where, c.Expect)
 	}
+}
+
+// hasLocator reports whether a command carries a non-coordinate locator.
+func hasLocator(c *Command) bool {
+	return (c.UIA != nil && !c.UIA.IsZero()) || c.Find != ""
 }
 
 func (v *validator) checkButton(where, button string) {

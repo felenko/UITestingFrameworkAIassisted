@@ -1,0 +1,40 @@
+version: 1
+session:
+  name: "Character Map UIA demo"
+  description: >
+    Demonstrates Phase 2: locating controls via the UI Automation tree instead
+    of pixel coordinates. The click targets the 'Select' button by its UIA
+    Name/ControlType, and waits until that control reports it is enabled — no
+    hardcoded coordinates, no focus/pixel guessing.
+  application:
+    path: 'C:\Windows\System32\charmap.exe'
+    startupTimeout: 10s
+    readyWhen:
+      window: { title: "Character Map" }
+    shutdown: force
+  ai:
+    provider: claude
+    timeout: 60s
+  settings:
+    windowMatch: title
+    autoSettle: true
+
+testCases:
+  - id: TC-UIA-CLICK
+    name: "Click the Select button located via UI Automation"
+    folder: "UIA"
+    tags: [uia, smoke]
+    steps:
+      - human: "Click the 'Select' button — located by UI Automation, not coordinates"
+        machine:
+          action: mouse_click
+          uia: { name: "Select", controlType: "button" }
+          waitBefore: { uia: { name: "Select", controlType: "button", state: "enabled" } }
+    validation:
+      human: "Character Map is open and shows a grid of characters."
+      assert:
+        - id: charmap-open
+          action: assert_ai
+          question: "Is the Windows Character Map application visible, showing a grid of characters?"
+          target: { window: "Character Map" }
+          expect: yes

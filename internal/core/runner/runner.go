@@ -16,6 +16,7 @@ import (
 	"github.com/felenko/uitest/internal/core/platform"
 	"github.com/felenko/uitest/internal/core/result"
 	"github.com/felenko/uitest/internal/core/session"
+	"github.com/felenko/uitest/internal/core/uia"
 	"github.com/felenko/uitest/internal/core/vars"
 )
 
@@ -51,6 +52,10 @@ type Runner struct {
 	app           *appProcess
 	appPID        uint32
 	currentWindow platform.Window
+
+	uiaAuto *uia.Automation // lazily created UI Automation backend
+	uiaErr  error
+	uiaInit bool
 
 	provider      string
 	model         string
@@ -103,6 +108,9 @@ func (r *Runner) Run(ctx context.Context) (*result.Results, int) {
 		return nil, exitSetup(fmt.Errorf("preparing output: %w", err))
 	}
 	defer func() {
+		if r.uiaAuto != nil {
+			r.uiaAuto.Close()
+		}
 		if r.logFile != nil {
 			r.logFile.Close()
 		}

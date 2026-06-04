@@ -147,8 +147,8 @@ to the AI only when cheap checks can't decide.
 | `waitBefore` | any actuation | A **condition** that must hold before acting (poll until true or timeout). |
 | `verify` | any actuation | A **condition** that must hold *after* acting; if not, the action is retried. |
 | `actionRetries` | any actuation | Re-attempts of this action when `verify` fails (default `settings.defaultActionRetries`). |
-| `uia` | mouse/keyboard | Locate the target via the UI Automation tree (Phase 2). |
-| `find` | mouse/keyboard | Locate the target by natural-language AI search (Phase 3). |
+| `uia` | mouse | Locate the target via the UI Automation tree (`{ automationId \| name \| controlType }`); the click lands on the control's center. |
+| `find` | mouse/keyboard | Locate the target by natural-language AI search (Phase 3, not yet available). |
 
 A **condition** (used by `waitBefore`, `verify`, and `wait.forAI`) carries one or more *rungs*,
 evaluated cheapest-first; all present rungs must hold:
@@ -158,7 +158,7 @@ evaluated cheapest-first; all present rungs must hold:
 | `window: { title\|process\|class, gone }` | free | A window is present (or absent, with `gone: true`). |
 | `stable: true` | free | The target region has stopped changing (animations/spinners done). |
 | `changed: true` | free | The target region changed since the action (it registered). |
-| `uia: { automationId\|name\|controlType, state, value }` | free | A control's state (Phase 2). |
+| `uia: { automationId\|name\|controlType, state }` | free | A control exists, or has `state: enabled`. (Selection/value states are planned.) |
 | `question: "..."` (+ `expect`) | AI call | An AI vision yes/no — used when it's the declared check, or as escalation. |
 
 **Defaults (cost-minimizing).** With `settings.autoSettle` on (default), the runner waits for the

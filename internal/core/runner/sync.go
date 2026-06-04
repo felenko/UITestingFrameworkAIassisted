@@ -10,6 +10,7 @@ import (
 	"github.com/felenko/uitest/internal/core/platform"
 	"github.com/felenko/uitest/internal/core/result"
 	"github.com/felenko/uitest/internal/core/session"
+	"github.com/felenko/uitest/internal/core/uia"
 )
 
 // Pixel-diff tolerances (fraction of sampled pixels that must differ).
@@ -65,11 +66,7 @@ func (r *Runner) runCommand(ctx context.Context, cmd *session.Command, sr *resul
 	if !isActuation(cmd.Action) {
 		return 1, "", r.executeCommand(ctx, cmd, sr, caseID)
 	}
-	// Phase 1: cheaper locators only. UIA/find are accepted by the schema but
-	// not executable yet.
-	if cmd.UIA != nil && !cmd.UIA.IsZero() {
-		return 0, "", fmt.Errorf("uia targeting is not yet available (Phase 2)")
-	}
+	// AI element location (`find`) is Phase 3; `uia` locate is handled in perform().
 	if cmd.Find != "" {
 		return 0, "", fmt.Errorf("find (AI element location) is not yet available (Phase 3)")
 	}
@@ -115,7 +112,7 @@ func (r *Runner) runCommand(ctx context.Context, cmd *session.Command, sr *resul
 			before, _ = r.captureContext(condTarget(verify, cmd.Target))
 		}
 
-		if aerr := r.executeCommand(ctx, cmd, sr, caseID); aerr != nil {
+		if aerr := r.perform(ctx, cmd, sr, caseID); aerr != nil {
 			lastErr = aerr
 			continue
 		}
@@ -150,6 +147,91 @@ func (r *Runner) runCommand(ctx context.Context, cmd *session.Command, sr *resul
 		lastErr = fmt.Errorf("action %s did not take effect", cmd.Action)
 	}
 	return attempts, diagnosis, lastErr
+}
+
+// uiaEngine lazily creates the UI Automation backend.
+func (r *Runner) uiaEngine() (*uia.Automation, error) {
+	if !r.uiaInit {
+		r.uiaInit = true
+		r.uiaAuto, r.uiaErr = uia.New()
+	}
+	return r.uiaAuto, r.uiaErr
+}
+
+// perform runs the raw action, first resolving a UIA-located target to a screen
+// point when the command uses `uia:` (so e.g. mouse_click acts on the control's
+// center regardless of layout).
+func (r *Runner) perform(ctx context.Context, cmd *session.Command, sr *result.Step, caseID string) error {
+	if cmd.UIA != nil && !cmd.UIA.IsZero() {
+		pt, err := r.uiaPoint(cmd.UIA)
+		if err != nil {
+			return err
+		}
+		orig := cmd.Target
+		cmd.Target = rawPointTarget(pt)
+		defer func() { cmd.Target = orig }()
+	}
+	return r.executeCommand(ctx, cmd, sr, caseID)
+}
+
+// uiaPoint resolves a UIA query to the center of the matched control (screen px).
+func (r *Runner) uiaPoint(q *session.UIAQuery) (platform.Point, error) {
+	if r.currentWindow == nil {
+		return platform.Point{}, fmt.Errorf("uia: no current window to search within")
+	}
+	au, err := r.uiaEngine()
+	if err != nil {
+		return platform.Point{}, fmt.Errorf("uia init failed: %w", err)
+	}
+	el, err := au.Find(r.currentWindow.Handle(), uia.Query{
+		AutomationID: r.bag.Expand(q.AutomationID),
+		Name:         r.bag.Expand(q.Name),
+		ControlType:  q.ControlType,
+	})
+	if err != nil {
+		return platform.Point{}, err
+	}
+	defer el.Release()
+	rc, err := el.BoundingRect()
+	if err != nil {
+		return platform.Point{}, err
+	}
+	x, y := rc.Center()
+	return platform.Point{X: x, Y: y}, nil
+}
+
+// rawPointTarget builds a screen-absolute point target.
+func rawPointTarget(p platform.Point) *session.Target {
+	x, y := p.X, p.Y
+	return &session.Target{X: &x, Y: &y, Raw: true}
+}
+
+// uiaConditionHolds evaluates a UIA condition rung (existence/enabled/value).
+func (r *Runner) uiaConditionHolds(uc *session.UIACondition) (bool, error) {
+	if r.currentWindow == nil {
+		return false, nil
+	}
+	au, err := r.uiaEngine()
+	if err != nil {
+		return false, fmt.Errorf("uia init failed: %w", err)
+	}
+	el, err := au.Find(r.currentWindow.Handle(), uia.Query{
+		AutomationID: r.bag.Expand(uc.AutomationID),
+		Name:         r.bag.Expand(uc.Name),
+		ControlType:  uc.ControlType,
+	})
+	if err != nil {
+		return false, nil // not found => condition not satisfied (keep polling)
+	}
+	defer el.Release()
+	switch uc.State {
+	case "", "exists":
+		return true, nil
+	case "enabled":
+		return el.IsEnabled(), nil
+	default:
+		return false, fmt.Errorf("uia state %q is not yet supported", uc.State)
+	}
 }
 
 // defaultVerify infers a cheap, safe post-condition for actions where retrying
@@ -212,7 +294,13 @@ func (r *Runner) pointRungs(ctx context.Context, cond *session.Condition, target
 		}
 	}
 	if cond.UIA != nil {
-		return false, fmt.Errorf("uia conditions are not yet available (Phase 2)")
+		ok, err := r.uiaConditionHolds(cond.UIA)
+		if err != nil {
+			return false, err
+		}
+		if !ok {
+			return false, nil
+		}
 	}
 	if cond.Changed && before != nil {
 		now, err := r.captureContext(condTarget(cond, target))
