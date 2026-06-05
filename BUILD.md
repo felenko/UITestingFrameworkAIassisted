@@ -79,7 +79,10 @@ retune any invocation without recompiling via environment variables:
 ```
 UITEST_CLAUDE_CMD="claude -p {prompt} --allowedTools Read"
 UITEST_CODEX_CMD="codex exec {prompt}"
-UITEST_CURSOR_CMD="cursor-agent -p {prompt}"
+UITEST_CURSOR_CMD="cursor-agent -p --trust --approve-mcps --output-format json --workspace %TEMP% {prompt}"
+UITEST_CURSOR_BIN="C:\\Users\\you\\AppData\\Local\\cursor-agent\\cursor-agent.cmd"
 ```
 
-`{prompt}` and `{image}` are substituted before launch.
+On Windows, if `cursor-agent` is not on `PATH` (common when launching from the
+GUI), the runner auto-detects `%LOCALAPPDATA%\\cursor-agent\\cursor-agent.cmd`.
+Set `UITEST_CURSOR_BIN` to override that path.

@@ -107,7 +107,7 @@ func (e *Engine) AssertAI(ctx context.Context, r Request) AssertResult {
 	if err != nil {
 		return AssertResult{Err: err}
 	}
-	prompt := buildAssertPrompt(r.Question, r.ImagePath)
+	prompt := buildAssertPrompt(cfg.Provider, r.Question, r.ImagePath)
 	res := AssertResult{Provider: cfg.Provider, Model: cfg.Model, Prompt: prompt, Samples: cfg.Samples}
 
 	verdicts := make([]bool, 0, cfg.Samples)
@@ -141,12 +141,12 @@ func (e *Engine) ReadText(ctx context.Context, r Request) (value, raw string, er
 	if err != nil {
 		return "", "", err
 	}
-	prompt := buildExtractPrompt(r.Question, r.ImagePath)
+	prompt := buildExtractPrompt(cfg.Provider, r.Question, r.ImagePath)
 	out, err := e.runWithTimeout(ctx, adapter, cfg, prompt, r.ImagePath)
 	if err != nil {
 		return "", out, err
 	}
-	return firstMeaningfulLine(out), out, nil
+	return firstMeaningfulLine(decodeProviderStdout(cfg.Provider, out)), out, nil
 }
 
 // invokeWithRetry runs one sample, retrying transient/unparseable failures.
@@ -177,6 +177,7 @@ func (e *Engine) invokeWithRetry(ctx context.Context, adapter Adapter, cfg Confi
 			lastErr = rerr
 			continue
 		}
+		out = decodeProviderStdout(cfg.Provider, out)
 		v, perr := ParseVerdict(out)
 		if perr != nil {
 			lastErr = perr
@@ -244,20 +245,40 @@ func expectBool(expect string) bool {
 	}
 }
 
-func buildAssertPrompt(question, imagePath string) string {
-	return fmt.Sprintf(`%s
+func buildAssertPrompt(provider, question, imagePath string) string {
+	question = strings.TrimSpace(question)
+	switch provider {
+	case "cursor":
+		// Single line on purpose: cursor-agent is invoked via a .cmd batch wrapper,
+		// and Windows batch arg parsing can drop everything after an embedded newline
+		// (which silently truncated the question). Keep the whole prompt on one line.
+		q := strings.Join(strings.Fields(question), " ")
+		return fmt.Sprintf("You are a strict image classifier. Open the image at %s and answer exactly one question by outputting only one word and nothing else (YES or NO). Do not explain, do not ask questions, do not add any other text. Question: %s", imagePath, q)
+	default:
+		return fmt.Sprintf(`%s
 
 You are looking at a screenshot saved at this path: %s
 Open and view that image file, then examine it carefully to answer the question.
 
-Answer with a single word on the first line: YES or NO.
-Then optionally add one short sentence explaining why.`, strings.TrimSpace(question), imagePath)
+After any explanation, your reply MUST end with a final line in exactly this format:
+VERDICT: YES
+or
+VERDICT: NO`, question, imagePath)
+	}
 }
 
-func buildExtractPrompt(question, imagePath string) string {
-	return fmt.Sprintf(`%s
+func buildExtractPrompt(provider, question, imagePath string) string {
+	question = strings.TrimSpace(question)
+	switch provider {
+	case "cursor":
+		// Single line on purpose (see buildAssertPrompt): avoids batch-wrapper newline truncation.
+		q := strings.Join(strings.Fields(question), " ")
+		return fmt.Sprintf("You are a strict image reader. Open the image at %s and answer exactly one question by outputting only the answer value and nothing else. Do not explain, do not ask questions, do not add any other text. Question: %s", imagePath, q)
+	default:
+		return fmt.Sprintf(`%s
 
 You are looking at a screenshot saved at this path: %s
 Open and view that image file, then answer based only on what is visible.
-Reply with only the answer value on the first line, with no extra words.`, strings.TrimSpace(question), imagePath)
+Reply with only the answer value on the first line, with no extra words.`, question, imagePath)
+	}
 }

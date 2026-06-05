@@ -28,6 +28,47 @@ func TestParseVerdictUnparseable(t *testing.T) {
 	}
 }
 
+func TestParseVerdictSentinel(t *testing.T) {
+	raw := "## Screenshot Analysis\n\nGrid columns: ... no rows\n\nVERDICT: YES"
+	v, err := ParseVerdict(raw)
+	if err != nil || !v {
+		t.Fatalf("ParseVerdict() = (%v,%v), want (true,nil)", v, err)
+	}
+}
+
+func TestParseVerdictSentinelMarkdown(t *testing.T) {
+	raw := "Long prose mentioning no rows and not ready.\n\n**VERDICT: NO**"
+	v, err := ParseVerdict(raw)
+	if err != nil || v {
+		t.Fatalf("ParseVerdict() = (%v,%v), want (false,nil)", v, err)
+	}
+}
+
+func TestParseVerdictProseNoRowsDoesNotFalseNegative(t *testing.T) {
+	// Prose describing "no rows" with a standalone YES must resolve to YES.
+	raw := "Grid columns: SIN Number ... no rows present.\n\nYES"
+	v, err := ParseVerdict(raw)
+	if err != nil || !v {
+		t.Fatalf("ParseVerdict() = (%v,%v), want (true,nil)", v, err)
+	}
+}
+
+func TestParseVerdictLastLineYes(t *testing.T) {
+	raw := "Some explanation.\n\nYES"
+	v, err := ParseVerdict(raw)
+	if err != nil || !v {
+		t.Fatalf("ParseVerdict() = (%v,%v), want (true,nil)", v, err)
+	}
+}
+
+func TestDecodeCursorJSON(t *testing.T) {
+	raw := `{"result":"prose\nYES","is_error":false}`
+	got := decodeCursorJSON(raw)
+	if got != "prose\nYES" {
+		t.Fatalf("decodeCursorJSON() = %q", got)
+	}
+}
+
 func TestMajority(t *testing.T) {
 	if v, ok := majority([]bool{true, true, false}); !ok || !v {
 		t.Errorf("majority(2T,1F) = (%v,%v)", v, ok)
