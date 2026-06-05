@@ -28,6 +28,32 @@ func cmdValidate(args []string) int {
 	return 0
 }
 
+// cmdSchema prints the JSON Schema for TestSession.yaml (generated from the Go
+// types) to stdout, or to a file with -o. Editors point at this for
+// autocomplete, hover hints, and validation.
+func cmdSchema(args []string) int {
+	fs := newFlagSet("schema")
+	out := fs.String("o", "", "write schema to this file instead of stdout")
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+	data, err := session.GenerateSchema()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error: generating schema: %v\n", err)
+		return 2
+	}
+	if *out != "" {
+		if err := os.WriteFile(*out, data, 0o644); err != nil {
+			fmt.Fprintf(os.Stderr, "error: writing %s: %v\n", *out, err)
+			return 2
+		}
+		fmt.Printf("wrote %s\n", *out)
+		return 0
+	}
+	os.Stdout.Write(data)
+	return 0
+}
+
 // cmdList prints the cases/steps the runner would execute.
 func cmdList(args []string) int {
 	if len(args) < 1 {

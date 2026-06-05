@@ -1,0 +1,882 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/felenko/uitest/internal/core/session/session",
+  "$ref": "#/$defs/Session",
+  "$defs": {
+    "AI": {
+      "properties": {
+        "provider": {
+          "type": "string",
+          "enum": [
+            "claude",
+            "codex",
+            "cursor"
+          ]
+        },
+        "model": {
+          "type": "string"
+        },
+        "timeout": {
+          "$ref": "#/$defs/Duration"
+        },
+        "retries": {
+          "type": "integer"
+        },
+        "samples": {
+          "type": "integer"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "Application": {
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "args": {
+          "$ref": "#/$defs/StringList"
+        },
+        "workingDir": {
+          "type": "string"
+        },
+        "startupTimeout": {
+          "$ref": "#/$defs/Duration"
+        },
+        "readyWhen": {
+          "$ref": "#/$defs/ReadyWhen"
+        },
+        "shutdown": {
+          "type": "string",
+          "enum": [
+            "graceful",
+            "force",
+            "leaveOpen"
+          ]
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "path"
+      ]
+    },
+    "Command": {
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "action": {
+                "enum": [
+                  "mouse_move",
+                  "mouse_click",
+                  "mouse_down",
+                  "mouse_up",
+                  "mouse_scroll"
+                ]
+              }
+            },
+            "required": [
+              "action"
+            ]
+          },
+          "then": {
+            "required": [
+              "target"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "action": {
+                "enum": [
+                  "focus_window",
+                  "close_window",
+                  "move_window",
+                  "resize_window"
+                ]
+              }
+            },
+            "required": [
+              "action"
+            ]
+          },
+          "then": {
+            "required": [
+              "target"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "action": {
+                "enum": [
+                  "mouse_drag"
+                ]
+              }
+            },
+            "required": [
+              "action"
+            ]
+          },
+          "then": {
+            "required": [
+              "from",
+              "to"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "action": {
+                "enum": [
+                  "type_text"
+                ]
+              }
+            },
+            "required": [
+              "action"
+            ]
+          },
+          "then": {
+            "required": [
+              "text"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "action": {
+                "enum": [
+                  "key_press"
+                ]
+              }
+            },
+            "required": [
+              "action"
+            ]
+          },
+          "then": {
+            "required": [
+              "keys"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "action": {
+                "enum": [
+                  "key_down",
+                  "key_up"
+                ]
+              }
+            },
+            "required": [
+              "action"
+            ]
+          },
+          "then": {
+            "required": [
+              "key"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "action": {
+                "enum": [
+                  "launch_app"
+                ]
+              }
+            },
+            "required": [
+              "action"
+            ]
+          },
+          "then": {
+            "required": [
+              "path"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "action": {
+                "enum": [
+                  "assert_ai"
+                ]
+              }
+            },
+            "required": [
+              "action"
+            ]
+          },
+          "then": {
+            "required": [
+              "question"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "action": {
+                "enum": [
+                  "read_text_ai"
+                ]
+              }
+            },
+            "required": [
+              "action"
+            ]
+          },
+          "then": {
+            "required": [
+              "question",
+              "store"
+            ]
+          }
+        }
+      ],
+      "properties": {
+        "action": {
+          "type": "string",
+          "enum": [
+            "assert_ai",
+            "close_window",
+            "focus_window",
+            "key_down",
+            "key_press",
+            "key_up",
+            "launch_app",
+            "mouse_click",
+            "mouse_down",
+            "mouse_drag",
+            "mouse_move",
+            "mouse_scroll",
+            "mouse_up",
+            "move_window",
+            "read_text_ai",
+            "resize_window",
+            "screenshot",
+            "type_text",
+            "wait"
+          ],
+          "description": "The command to perform."
+        },
+        "target": {
+          "$ref": "#/$defs/Target",
+          "description": "Where the action applies (point, window, rect, or \"screen\")."
+        },
+        "from": {
+          "$ref": "#/$defs/Target",
+          "description": "mouse_drag: the start point {x, y}."
+        },
+        "to": {
+          "$ref": "#/$defs/Target",
+          "description": "mouse_drag: the end point {x, y}."
+        },
+        "button": {
+          "type": "string",
+          "enum": [
+            "left",
+            "right",
+            "middle"
+          ],
+          "description": "Mouse button: left (default), right, or middle."
+        },
+        "count": {
+          "type": "integer",
+          "description": "Click count (e.g. 2 for a double-click)."
+        },
+        "dx": {
+          "type": "integer",
+          "description": "mouse_scroll: horizontal scroll amount."
+        },
+        "dy": {
+          "type": "integer",
+          "description": "mouse_scroll: vertical scroll amount (positive scrolls down)."
+        },
+        "text": {
+          "type": "string",
+          "description": "type_text: the text to type."
+        },
+        "perCharDelayMs": {
+          "type": "integer",
+          "description": "type_text: delay between characters in ms (paces fast apps)."
+        },
+        "keys": {
+          "$ref": "#/$defs/StringList",
+          "description": "key_press: a chord like \"Ctrl+S\" or a list of chords."
+        },
+        "key": {
+          "type": "string",
+          "description": "key_down/key_up: the single key to press or release."
+        },
+        "ms": {
+          "$ref": "#/$defs/Duration",
+          "description": "wait: how long to wait (e.g. \"500ms\", \"2s\")."
+        },
+        "forAI": {
+          "$ref": "#/$defs/Condition",
+          "description": "wait: wait until this condition holds instead of a fixed delay."
+        },
+        "path": {
+          "type": "string",
+          "description": "launch_app: path to the executable to launch."
+        },
+        "args": {
+          "$ref": "#/$defs/StringList",
+          "description": "launch_app: command-line arguments."
+        },
+        "workingDir": {
+          "type": "string",
+          "description": "launch_app: working directory for the launched process."
+        },
+        "readyWhen": {
+          "$ref": "#/$defs/ReadyWhen",
+          "description": "launch_app: how to know the app is ready."
+        },
+        "x": {
+          "type": "integer",
+          "description": "move_window: target X position."
+        },
+        "y": {
+          "type": "integer",
+          "description": "move_window: target Y position."
+        },
+        "width": {
+          "type": "integer",
+          "description": "resize_window: target width."
+        },
+        "height": {
+          "type": "integer",
+          "description": "resize_window: target height."
+        },
+        "save": {
+          "type": "string",
+          "description": "screenshot: file name to save the capture as."
+        },
+        "question": {
+          "type": "string",
+          "description": "assert_ai/read_text_ai: the question for the AI engine."
+        },
+        "expect": {
+          "enum": [
+            "yes",
+            "no",
+            true,
+            false
+          ],
+          "description": "assert_ai: expected answer, yes or no."
+        },
+        "store": {
+          "type": "string",
+          "description": "read_text_ai: variable name to store the extracted text in."
+        },
+        "baseline": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "human": {
+          "type": "string"
+        },
+        "provider": {
+          "type": "string",
+          "enum": [
+            "claude",
+            "codex",
+            "cursor"
+          ],
+          "description": "Override the AI provider for this command."
+        },
+        "timeout": {
+          "$ref": "#/$defs/Duration",
+          "description": "Override the AI timeout for this command."
+        },
+        "retries": {
+          "type": "integer"
+        },
+        "samples": {
+          "type": "integer"
+        },
+        "uia": {
+          "$ref": "#/$defs/UIAQuery",
+          "description": "Locate the target control via UI Automation."
+        },
+        "find": {
+          "type": "string",
+          "description": "Locate the target via AI element search (Phase 3)."
+        },
+        "waitBefore": {
+          "$ref": "#/$defs/Condition",
+          "description": "Precondition: wait until the target is ready before acting."
+        },
+        "verify": {
+          "$ref": "#/$defs/Condition",
+          "description": "Postcondition: confirm the action had its intended effect."
+        },
+        "actionRetries": {
+          "type": "integer",
+          "description": "How many times to re-attempt the action if Verify fails."
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "action"
+      ]
+    },
+    "Condition": {
+      "properties": {
+        "window": {
+          "$ref": "#/$defs/WindowMatch",
+          "description": "A window must exist (or be gone, if window.gone is set)."
+        },
+        "changed": {
+          "type": "boolean",
+          "description": "The target region must have changed since acting."
+        },
+        "stable": {
+          "type": "boolean",
+          "description": "The target region must be visually settled (stopped changing)."
+        },
+        "uia": {
+          "$ref": "#/$defs/UIACondition",
+          "description": "A UI Automation element must be in the given state."
+        },
+        "question": {
+          "type": "string",
+          "description": "Ask the AI engine this yes/no question (most expensive rung)."
+        },
+        "expect": {
+          "enum": [
+            "yes",
+            "no",
+            true,
+            false
+          ],
+          "description": "Expected AI answer: yes or no."
+        },
+        "target": {
+          "$ref": "#/$defs/Target",
+          "description": "Region to evaluate; defaults to the action's target."
+        },
+        "pollEvery": {
+          "$ref": "#/$defs/Duration",
+          "description": "How often to re-check the condition."
+        },
+        "timeout": {
+          "$ref": "#/$defs/Duration",
+          "description": "Maximum time to wait for the condition to hold."
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "Duration": {
+      "oneOf": [
+        {
+          "type": "number",
+          "description": "Milliseconds."
+        },
+        {
+          "type": "string",
+          "description": "Duration with a unit, e.g. \"500ms\", \"2s\", \"1m\", \"1h30m\"."
+        }
+      ],
+      "description": "A duration: a bare number (milliseconds) or a string with a unit (\"500ms\", \"2s\", \"1m\")."
+    },
+    "ReadyWhen": {
+      "properties": {
+        "window": {
+          "$ref": "#/$defs/WindowMatch"
+        },
+        "delay": {
+          "$ref": "#/$defs/Duration"
+        },
+        "forAI": {
+          "$ref": "#/$defs/Condition"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "Rect": {
+      "properties": {
+        "x": {
+          "type": "integer"
+        },
+        "y": {
+          "type": "integer"
+        },
+        "width": {
+          "type": "integer"
+        },
+        "height": {
+          "type": "integer"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "Session": {
+      "properties": {
+        "version": {
+          "type": "integer"
+        },
+        "session": {
+          "$ref": "#/$defs/SessionInfo"
+        },
+        "variables": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object"
+        },
+        "testCases": {
+          "items": {
+            "$ref": "#/$defs/TestCase"
+          },
+          "type": "array",
+          "minItems": 1
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "version",
+        "session",
+        "testCases"
+      ]
+    },
+    "SessionInfo": {
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "application": {
+          "$ref": "#/$defs/Application"
+        },
+        "ai": {
+          "$ref": "#/$defs/AI"
+        },
+        "settings": {
+          "$ref": "#/$defs/Settings"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "application"
+      ]
+    },
+    "Settings": {
+      "properties": {
+        "outDir": {
+          "type": "string"
+        },
+        "defaultStepTimeout": {
+          "$ref": "#/$defs/Duration"
+        },
+        "failFast": {
+          "type": "boolean"
+        },
+        "screenshotOnFailure": {
+          "type": "boolean"
+        },
+        "windowMatch": {
+          "type": "string",
+          "enum": [
+            "title",
+            "process",
+            "class"
+          ]
+        },
+        "coordinateSpace": {
+          "type": "string",
+          "enum": [
+            "window",
+            "screen"
+          ]
+        },
+        "dpiAware": {
+          "type": "boolean"
+        },
+        "autoSettle": {
+          "type": "boolean"
+        },
+        "settleTimeout": {
+          "$ref": "#/$defs/Duration"
+        },
+        "settleInterval": {
+          "$ref": "#/$defs/Duration"
+        },
+        "defaultActionRetries": {
+          "type": "integer"
+        },
+        "aiEscalation": {
+          "type": "boolean"
+        },
+        "focusGuard": {
+          "type": "boolean"
+        },
+        "forceTopmost": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "Step": {
+      "properties": {
+        "human": {
+          "type": "string",
+          "description": "Plain-language description of the step's intent."
+        },
+        "machine": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/Command"
+            },
+            {
+              "items": {
+                "$ref": "#/$defs/Command"
+              },
+              "type": "array"
+            }
+          ],
+          "description": "A single command or a list of commands."
+        },
+        "timeout": {
+          "$ref": "#/$defs/Duration",
+          "description": "Per-step timeout override."
+        },
+        "retries": {
+          "type": "integer",
+          "description": "How many times to retry the whole step on failure."
+        },
+        "continueOnFailure": {
+          "type": "boolean",
+          "description": "If true, keep going even if this step fails."
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "human",
+        "machine"
+      ]
+    },
+    "StringList": {
+      "oneOf": [
+        {
+          "type": "string"
+        },
+        {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      ],
+      "description": "A single string or a list of strings."
+    },
+    "Target": {
+      "oneOf": [
+        {
+          "type": "string",
+          "enum": [
+            "screen"
+          ],
+          "description": "The whole screen."
+        },
+        {
+          "properties": {
+            "x": {
+              "type": "integer",
+              "description": "X coordinate of a point target."
+            },
+            "y": {
+              "type": "integer",
+              "description": "Y coordinate of a point target."
+            },
+            "window": {
+              "type": "string",
+              "description": "Match a window by title (substring or regex)."
+            },
+            "process": {
+              "type": "string",
+              "description": "Match a window by owning process name, e.g. \"notepad.exe\"."
+            },
+            "class": {
+              "type": "string",
+              "description": "Match a window by its Win32 class name."
+            },
+            "rect": {
+              "$ref": "#/$defs/Rect",
+              "description": "A rectangular region {x, y, width, height}."
+            },
+            "relativeTo": {
+              "type": "string",
+              "enum": [
+                "window",
+                "screen"
+              ],
+              "description": "Coordinate space for x/y: window (default) or screen."
+            },
+            "raw": {
+              "type": "boolean",
+              "description": "Treat coordinates as raw device pixels (skip DPI scaling)."
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "description": "A point {x,y}, a window {window|process|class}, or a rectangle {rect}."
+        }
+      ],
+      "description": "Where the action applies or what to capture."
+    },
+    "TestCase": {
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "folder": {
+          "type": "string"
+        },
+        "tags": {
+          "$ref": "#/$defs/StringList"
+        },
+        "failFast": {
+          "type": "boolean"
+        },
+        "retries": {
+          "type": "integer"
+        },
+        "setup": {
+          "items": {
+            "$ref": "#/$defs/Step"
+          },
+          "type": "array"
+        },
+        "steps": {
+          "items": {
+            "$ref": "#/$defs/Step"
+          },
+          "type": "array",
+          "minItems": 1
+        },
+        "validation": {
+          "$ref": "#/$defs/Validation"
+        },
+        "teardown": {
+          "items": {
+            "$ref": "#/$defs/Step"
+          },
+          "type": "array"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "id",
+        "name",
+        "steps"
+      ]
+    },
+    "UIACondition": {
+      "properties": {
+        "automationId": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "controlType": {
+          "type": "string"
+        },
+        "state": {
+          "type": "string"
+        },
+        "value": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "UIAQuery": {
+      "properties": {
+        "automationId": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "controlType": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "Validation": {
+      "properties": {
+        "human": {
+          "type": "string"
+        },
+        "assert": {
+          "items": {
+            "$ref": "#/$defs/Command"
+          },
+          "type": "array"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "human",
+        "assert"
+      ]
+    },
+    "WindowMatch": {
+      "properties": {
+        "title": {
+          "type": "string"
+        },
+        "process": {
+          "type": "string"
+        },
+        "class": {
+          "type": "string"
+        },
+        "gone": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    }
+  },
+  "title": "TestSession",
+  "description": "AI-assisted UI test session (TestSession.yaml)."
+}

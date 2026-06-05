@@ -108,11 +108,44 @@ A **test case** is made of multiple **steps** plus a final **validation**:
         expect: yes
 ```
 
+## Authoring in your editor (schema hints)
+
+Session files come with a **JSON Schema** that gives **autocomplete, hover descriptions of every
+command/field, and inline validation** in any editor backed by `yaml-language-server` (VS Code's
+[`redhat.vscode-yaml`](https://marketplace.visualstudio.com/items?itemName=redhat.vscode-yaml),
+Neovim, JetBrains).
+
+The schema is **generated from the Go types**, so it can never drift from what the runner
+accepts. It is committed at [`schema/testsession.schema.json`](schema/testsession.schema.json),
+and you can regenerate it any time:
+
+```powershell
+./bin/uitest.exe schema -o schema/testsession.schema.json
+```
+
+Wire it up either way:
+
+- **Per file** — add a modeline as the first line (used by the demo sessions):
+
+  ```yaml
+  # yaml-language-server: $schema=./schema/testsession.schema.json
+  ```
+
+- **Per workspace** — map it in `.vscode/settings.json` (already included here) so any
+  `*.session.yaml` gets hints without a modeline:
+
+  ```json
+  { "yaml.schemas": { "./schema/testsession.schema.json": ["*.session.yaml"] } }
+  ```
+
+For files outside this repo, point `$schema` at the raw URL:
+`https://raw.githubusercontent.com/felenko/UITestingFrameworkAIassisted/master/schema/testsession.schema.json`.
+
 ## Status
 
 Both runners are **implemented** in Go and verified end-to-end on Windows:
 
-- **`uitest` (CLI)** — `run`, `validate`, `list`, `doctor`, `approve`; pure-Go Win32 actuation
+- **`uitest` (CLI)** — `run`, `validate`, `list`, `doctor`, `approve`, `schema`; pure-Go Win32 actuation
   (SendInput), GDI screen capture, the AI assertion engine (claude/codex/cursor adapters with
   retries, majority vote, caching), and the self-contained `report.html` + `results.json`.
 - **`uitest-gui` (GUI)** — `webview/webview_go` shell over the same core, with a session picker,

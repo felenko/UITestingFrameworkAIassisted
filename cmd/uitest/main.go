@@ -35,6 +35,8 @@ func main() {
 		os.Exit(cmdDoctor(args))
 	case "approve":
 		os.Exit(cmdApprove(args))
+	case "schema":
+		os.Exit(cmdSchema(args))
 	case "-h", "--help", "help":
 		usage()
 		os.Exit(0)
@@ -54,6 +56,7 @@ Usage:
   uitest list <session.yaml>
   uitest doctor
   uitest approve <results-dir> [--case ID] [--assert ID] [--all] [--baselines DIR]
+  uitest schema [-o <file>]   Emit the TestSession.yaml JSON Schema (for editors)
 
 Run options:
   --out <dir>            Output dir (default ./test-results/<timestamp>)

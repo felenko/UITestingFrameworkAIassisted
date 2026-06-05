@@ -1,3 +1,4 @@
+# yaml-language-server: $schema=./schema/testsession.schema.json
 version: 1
 session:
   name: "Notepad demo (unique title)"

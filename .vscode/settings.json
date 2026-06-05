@@ -1,0 +1,11 @@
+{
+  "// uitest": "Maps the generated JSON Schema onto session files so VS Code's YAML extension (redhat.vscode-yaml) gives autocomplete, hover hints, and validation. Regenerate the schema with: uitest schema -o schema/testsession.schema.json",
+  "yaml.schemas": {
+    "./schema/testsession.schema.json": [
+      "*.session.yaml",
+      "*-demo.yaml",
+      "notepad-demo.yaml",
+      "notepad-sync-demo.yaml"
+    ]
+  }
+}
