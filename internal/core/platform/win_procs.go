@@ -18,6 +18,14 @@ var (
 	procGetCursorPos = user32.NewProc("GetCursorPos")
 	procVkKeyScanW   = user32.NewProc("VkKeyScanW")
 
+	// Low-level input hooks (user-intervention detection).
+	procSetWindowsHookExW   = user32.NewProc("SetWindowsHookExW")
+	procUnhookWindowsHookEx = user32.NewProc("UnhookWindowsHookEx")
+	procCallNextHookEx      = user32.NewProc("CallNextHookEx")
+	procGetMessageW         = user32.NewProc("GetMessageW")
+	procPostThreadMessageW  = user32.NewProc("PostThreadMessageW")
+	procGetCurrentThreadId  = kernel32.NewProc("GetCurrentThreadId")
+
 	// Metrics / DPI.
 	procGetSystemMetrics            = user32.NewProc("GetSystemMetrics")
 	procSetProcessDPIAware          = user32.NewProc("SetProcessDPIAware")
@@ -41,6 +49,7 @@ var (
 	procAttachThreadInput       = user32.NewProc("AttachThreadInput")
 	procGetForegroundWindow     = user32.NewProc("GetForegroundWindow")
 	procSystemParametersInfo    = user32.NewProc("SystemParametersInfoW")
+	procGetWindowLongW          = user32.NewProc("GetWindowLongW")
 
 	// Device context / capture.
 	procGetDC               = user32.NewProc("GetDC")
@@ -96,9 +105,16 @@ const (
 	spiSetForegroundLockTimeout = 0x2001
 	spifSendChange              = 0x2
 
-	swpNoZOrder = 0x0004
-	swpNoSize   = 0x0001
-	swpNoMove   = 0x0002
+	swpNoZOrder    = 0x0004
+	swpNoSize      = 0x0001
+	swpNoMove      = 0x0002
+	swpNoActivate  = 0x0010
+
+	// Z-order: SetWindowPos hWndInsertAfter sentinels and the topmost ex-style.
+	hwndTopmost   = ^uintptr(0)  // (HWND)-1
+	hwndNoTopmost = ^uintptr(1)  // (HWND)-2
+	gwlExStyle    = ^uintptr(19) // GWL_EXSTYLE = -20, as a uintptr bit pattern
+	wsExTopmost   = 0x00000008
 
 	wmClose = 0x0010
 
@@ -109,6 +125,17 @@ const (
 	logpixelsx   = 88
 
 	processQueryLimitedInformation = 0x1000
+
+	// Low-level hooks.
+	whKeyboardLL  = 13
+	whMouseLL     = 14
+	hcAction      = 0
+	llkhfInjected = 0x10 // KBDLLHOOKSTRUCT.flags: synthetic key event
+	llmhfInjected = 0x01 // MSLLHOOKSTRUCT.flags: synthetic mouse event
+	wmQuit        = 0x0012
+	wmMouseMove   = 0x0200
+	wmKeyDown     = 0x0100
+	wmSysKeyDown  = 0x0104
 
 	// SetProcessDpiAwarenessContext value: PER_MONITOR_AWARE_V2 = -4.
 	dpiAwarenessContextPerMonitorV2 = ^uintptr(3) // (HANDLE)-4

@@ -219,6 +219,36 @@ func (d *winDriver) FocusWindow(w Window) error {
 	return fmt.Errorf("could not bring window %q to the foreground", w.Title())
 }
 
+// ForegroundActive reports whether w is the current foreground window. Cheap
+// pre-flight check used to guard input actuation against focus drift.
+func (d *winDriver) ForegroundActive(w Window) bool {
+	cur, _, _ := procGetForegroundWindow.Call()
+	return cur != 0 && cur == w.Handle()
+}
+
+// IsTopmost reports whether w currently has the WS_EX_TOPMOST style.
+func (d *winDriver) IsTopmost(w Window) bool {
+	ex, _, _ := procGetWindowLongW.Call(w.Handle(), gwlExStyle)
+	return ex&wsExTopmost != 0
+}
+
+// SetTopmost pins w above (or releases it from) all non-topmost windows so a
+// stray normal window can't occlude the target during interaction. Owned
+// dialogs follow their owner into the topmost band. SWP_NOACTIVATE keeps focus
+// where it is; foreground is handled separately by FocusWindow.
+func (d *winDriver) SetTopmost(w Window, on bool) error {
+	after := hwndNoTopmost
+	if on {
+		after = hwndTopmost
+	}
+	res, _, err := procSetWindowPos.Call(w.Handle(), after, 0, 0, 0, 0,
+		swpNoMove|swpNoSize|swpNoActivate)
+	if res == 0 {
+		return errno("SetWindowPos(topmost)", err)
+	}
+	return nil
+}
+
 func (d *winDriver) WindowPID(w Window) uint32 {
 	return windowPID(w.Handle())
 }

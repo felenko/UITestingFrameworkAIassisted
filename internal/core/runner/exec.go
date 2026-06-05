@@ -119,7 +119,11 @@ func (r *Runner) executeCommand(ctx context.Context, cmd *session.Command, sr *r
 			return err
 		}
 		r.currentWindow = w
-		return r.drv.FocusWindow(w)
+		if err := r.drv.FocusWindow(w); err != nil {
+			return err
+		}
+		r.ensureTopmost()
+		return nil
 	case "close_window":
 		w, err := r.findWindow(cmd.Target)
 		if err != nil {

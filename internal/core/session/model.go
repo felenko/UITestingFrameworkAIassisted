@@ -63,6 +63,8 @@ type Settings struct {
 	SettleInterval       Duration `yaml:"settleInterval"`       // poll / stability interval (default 250ms)
 	DefaultActionRetries int      `yaml:"defaultActionRetries"` // action re-attempts when verify fails (default 2)
 	AIEscalation         *bool    `yaml:"aiEscalation"`         // AI diagnosis when cheap retries exhaust (default true)
+	FocusGuard           *bool    `yaml:"focusGuard"`           // activate target + detect user intervention before each input action (default true)
+	ForceTopmost         *bool    `yaml:"forceTopmost"`         // keep the bound window above non-topmost windows so it can't be occluded (default true)
 }
 
 // TestCase is a named scenario: ordered steps plus a final validation.
