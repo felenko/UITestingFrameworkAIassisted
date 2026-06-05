@@ -1,0 +1,53 @@
+name: Release
+
+# Build both front-ends on a Windows runner and publish them as release assets
+# whenever a version tag is pushed:  git tag v0.2.0 && git push --tags
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write # required for the gh CLI to create the release
+
+jobs:
+  release:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod # always matches the module's Go version
+          cache: true
+
+      - name: Build CLI (pure Go)
+        env:
+          CGO_ENABLED: '0'
+        run: go build -o bin/uitest.exe ./cmd/uitest
+
+      - name: Build GUI (webview, CGO)
+        env:
+          CGO_ENABLED: '1'
+        run: |
+          gcc --version # MinGW gcc is preinstalled on windows-latest
+          go build -o bin/uitest-gui.exe ./cmd/uitest-gui
+
+      - name: Generate checksums
+        run: |
+          Get-FileHash bin\uitest.exe, bin\uitest-gui.exe -Algorithm SHA256 |
+            ForEach-Object { "{0}  {1}" -f $_.Hash.ToLower(), (Split-Path $_.Path -Leaf) } |
+            Out-File -Encoding ascii bin\SHA256SUMS.txt
+          Get-Content bin\SHA256SUMS.txt
+
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create $env:GITHUB_REF_NAME `
+            bin/uitest.exe bin/uitest-gui.exe bin/SHA256SUMS.txt `
+            --title $env:GITHUB_REF_NAME `
+            --generate-notes
