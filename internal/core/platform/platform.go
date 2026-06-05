@@ -53,6 +53,7 @@ type Driver interface {
 
 	// Windows.
 	FindWindow(q WindowQuery) (Window, error)
+	FindWindowByPID(pid uint32) (Window, error) // largest visible window for a process
 	FocusWindow(w Window) error
 	CloseWindow(w Window) error
 	MoveWindow(w Window, x, y int) error

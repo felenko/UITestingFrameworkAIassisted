@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/felenko/uitest/internal/core/ai"
 	"github.com/felenko/uitest/internal/core/platform"
 	"github.com/felenko/uitest/internal/core/session"
 )
@@ -186,6 +187,26 @@ func (r *Runner) doctor() (int, error) {
 		return exitSetupC, fmt.Errorf("screen capture not available: %w", err)
 	}
 	r.logf("debug", "doctor: screen capture OK")
+
+	provider := r.sess.Session.AI.Provider
+	if r.opts.Provider != "" {
+		provider = r.opts.Provider
+	}
+	if provider == "" {
+		provider = "claude"
+	}
+	adapter, ok := ai.NewAdapter(provider)
+	if !ok {
+		return exitSetupC, fmt.Errorf("unknown AI provider %q", provider)
+	}
+	if !adapter.Available() {
+		hint := ""
+		if provider == "cursor" {
+			hint = fmt.Sprintf(" (looked for %q)", ai.ResolveCursorAgent())
+		}
+		return exitSetupC, fmt.Errorf("AI provider %q not found%s — assert_ai will fail", provider, hint)
+	}
+	r.logf("debug", "doctor: AI provider %q OK", provider)
 	return exitOK, nil
 }
 
