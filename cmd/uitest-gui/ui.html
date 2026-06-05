@@ -40,6 +40,11 @@ code{font-family:ui-monospace,Consolas,monospace;color:var(--muted)}
 .tree .folder.collapsed>.folder-children{display:none}
 .tree .folder-head input{cursor:pointer}
 .tree .step{color:var(--muted);font-size:13px;margin-left:10px}
+.tree .case-row{display:flex;align-items:center;gap:6px}
+.tree .cc-toggle{width:14px;color:var(--muted);text-align:center;cursor:pointer;user-select:none}
+.tree .cc-toggle.empty{cursor:default;visibility:hidden}
+.tree .case.collapsed .case-details{display:none}
+.tree .case-details{margin-top:2px}
 .counts{display:flex;gap:10px;flex-wrap:wrap;margin:10px 0}
 .count{background:var(--panel2);border:1px solid var(--border);border-radius:8px;padding:6px 12px;min-width:70px}
 .count b{display:block;font-size:18px}.count small{color:var(--muted);text-transform:uppercase;font-size:10px}
@@ -61,6 +66,12 @@ code{font-family:ui-monospace,Consolas,monospace;color:var(--muted)}
 .banner{display:inline-block;font-weight:700;padding:6px 14px;border-radius:999px}
 .banner.pass{background:rgba(46,204,113,.15);color:var(--pass)}
 .banner.fail{background:rgba(231,76,60,.15);color:var(--fail)}
+/* Overview: fixed run-settings on top, scrollable test cases below */
+.ov-layout{display:flex;flex-direction:column;gap:16px;height:calc(100vh - 96px)}
+.ov-settings{flex:0 0 auto;margin-bottom:0}
+.ov-cases{flex:1 1 auto;display:flex;flex-direction:column;min-height:0;margin-bottom:0}
+.ov-cases-head{flex:0 0 auto}
+.ov-cases .tree{flex:1 1 auto;min-height:0;overflow:auto;margin-top:4px}
 </style>
 </head>
 <body>
@@ -88,7 +99,9 @@ code{font-family:ui-monospace,Consolas,monospace;color:var(--muted)}
 
   <!-- OVERVIEW -->
   <section id="overview" class="hidden">
-    <div class="card">
+   <div class="ov-layout">
+    <!-- Fixed run-settings panel on top -->
+    <div class="card ov-settings">
       <div class="row">
         <h2 id="ovName" style="margin:0;flex:1"></h2>
       </div>
@@ -96,18 +109,7 @@ code{font-family:ui-monospace,Consolas,monospace;color:var(--muted)}
         App: <code id="ovApp"></code> · AI: <span id="ovProvider"></span> ·
         <span id="ovTotals"></span>
       </div>
-      <div class="row" style="margin:8px 0 4px">
-        <input id="searchBox" placeholder="🔍 Search id, name, description, tag…" style="flex:1;min-width:240px" oninput="applySearch()">
-        <button class="ghost" onclick="checkAll(true)">Check all</button>
-        <button class="ghost" onclick="checkAll(false)">Uncheck all</button>
-        <button class="ghost" onclick="collapseAll(true)">Collapse</button>
-        <button class="ghost" onclick="collapseAll(false)">Expand</button>
-        <span class="muted" id="selCount"></span>
-      </div>
-      <div class="tree" id="ovTree"></div>
-    </div>
-    <div class="card">
-      <h3 style="margin-top:0">Run settings</h3>
+      <h3 style="margin:10px 0 6px">Run settings</h3>
       <div class="row">
         <label>Provider <select id="optProvider"><option value="">(from session)</option><option>claude</option><option>codex</option><option>cursor</option></select></label>
         <label>Filter <input id="optFilter" placeholder="glob: TC-* / tag" style="width:140px"></label>
@@ -120,6 +122,21 @@ code{font-family:ui-monospace,Consolas,monospace;color:var(--muted)}
         <button class="ghost" id="btnCancel" onclick="cancel()" disabled>■ Cancel</button>
       </div>
     </div>
+    <!-- Scrollable test cases below -->
+    <div class="card ov-cases">
+      <div class="ov-cases-head">
+        <div class="row" style="margin:0">
+          <input id="searchBox" placeholder="🔍 Search id, name, description, tag…" style="flex:1;min-width:240px" oninput="applySearch()">
+          <button class="ghost" onclick="checkAll(true)">Check all</button>
+          <button class="ghost" onclick="checkAll(false)">Uncheck all</button>
+        <button class="ghost" onclick="collapseAll(true)">Collapse all</button>
+        <button class="ghost" onclick="collapseAll(false)">Expand all</button>
+          <span class="muted" id="selCount"></span>
+        </div>
+      </div>
+      <div class="tree" id="ovTree"></div>
+    </div>
+   </div>
   </section>
 
   <!-- LIVE -->
@@ -184,6 +201,7 @@ async function doLoad(path){
     document.getElementById('searchBox').value='';
     renderNode(buildTree(s.cases), tree);
     updateSelCount();updateFolderStates();
+    collapseAll(true); // always start fully collapsed
     show('overview');
   }catch(e){errEl.textContent='Validation failed:\n'+(e&&e.message?e.message:e);}
 }
@@ -224,14 +242,27 @@ function renderNode(node,container){
   for(const c of node.cases)container.appendChild(makeCaseEl(c));
 }
 function makeCaseEl(c){
-  const d=document.createElement('div');d.className='case';
+  const d=document.createElement('div');d.className='case collapsed';
   d.dataset.search=((c.id||'')+' '+(c.name||'')+' '+(c.description||'')+' '+((c.tags||[]).join(' '))).toLowerCase();
   const tags=(c.tags||[]).map(t=>`<span class="tag">${esc(t)}</span>`).join('');
-  d.innerHTML=`<label class="caseSel"><input type="checkbox" class="caseChk" value="${esc(c.id)}" checked onchange="onCaseToggle()"> <span class="cstat" data-id="${esc(c.id)}"></span><b>${esc(c.id)}</b> — ${esc(c.name)} ${tags}</label>`;
+  let details='';
+  if(c.description)details+=`<div class="step" style="font-style:italic">${esc(c.description)}</div>`;
+  for(const st of (c.steps||[]))details+=`<div class="step">· ${esc(st)}</div>`;
+  for(const a of (c.asserts||[]))details+=`<div class="step">✓ ${esc(a)}</div>`;
+  const hasDetails=details!=='';
+  d.innerHTML=`<div class="case-row">`+
+    `<span class="cc-toggle${hasDetails?'':' empty'}">${hasDetails?'▸':''}</span>`+
+    `<label class="caseSel"><input type="checkbox" class="caseChk" value="${esc(c.id)}" checked onchange="onCaseToggle()"> <span class="cstat" data-id="${esc(c.id)}"></span><b>${esc(c.id)}</b> — ${esc(c.name)} ${tags}</label>`+
+    `</div>`;
   const prev=caseStatus[c.id];if(prev)d.querySelector('.cstat').innerHTML=`<span class="chip ${prev}">${prev}</span> `;
-  if(c.description)d.innerHTML+=`<div class="step" style="font-style:italic">${esc(c.description)}</div>`;
-  for(const st of (c.steps||[]))d.innerHTML+=`<div class="step">· ${esc(st)}</div>`;
-  for(const a of (c.asserts||[]))d.innerHTML+=`<div class="step">✓ ${esc(a)}</div>`;
+  if(hasDetails){
+    const dd=document.createElement('div');dd.className='case-details';dd.innerHTML=details;d.appendChild(dd);
+    const tog=d.querySelector('.cc-toggle');
+    tog.addEventListener('click',()=>{
+      d.classList.toggle('collapsed');
+      tog.textContent=d.classList.contains('collapsed')?'▸':'▾';
+    });
+  }
   return d;
 }
 
@@ -270,6 +301,12 @@ function collapseAll(on){
   document.querySelectorAll('#ovTree .folder').forEach(f=>{
     f.classList.toggle('collapsed',on);
     const t=f.querySelector(':scope > .folder-head > .fc-toggle');if(t)t.textContent=on?'▸':'▾';
+  });
+  document.querySelectorAll('#ovTree .case').forEach(c=>{
+    const t=c.querySelector('.cc-toggle');
+    if(!t||t.classList.contains('empty'))return; // case has no details to collapse
+    c.classList.toggle('collapsed',on);
+    t.textContent=on?'▸':'▾';
   });
 }
 function applySearch(){

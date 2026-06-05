@@ -7,6 +7,9 @@ test-results/
 # Local agent / editor settings
 .claude/settings.local.json
 
+# Local login secrets for uitest (${username}, ${password}, …)
+credentials.yaml
+
 # Private / client test sessions — contain environment credentials and live in
 # their own project repos, never committed with the framework.
 # The real VC8 smoke session lives in the Biometrica VC8 project; see README.
