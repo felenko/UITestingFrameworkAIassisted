@@ -30,6 +30,19 @@ type Window interface {
 	Handle() uintptr
 }
 
+// InputWatcher observes physical (non-injected) user input for the duration of
+// a run, so the runner can tell whether a person touched the real mouse or
+// keyboard while an action was being driven. Implementations ignore the
+// synthetic input the framework itself injects.
+type InputWatcher interface {
+	// UserEvents returns a monotonically increasing count of real user input
+	// events (physical mouse buttons/wheel and key presses) seen so far. The
+	// runner snapshots it around an action and treats any delta as contamination.
+	UserEvents() uint64
+	// Stop uninstalls the watcher and releases its resources.
+	Stop()
+}
+
 // Driver is the OS abstraction the runner drives.
 type Driver interface {
 	// Lifecycle / capabilities.
@@ -54,10 +67,16 @@ type Driver interface {
 	// Windows.
 	FindWindow(q WindowQuery) (Window, error)
 	FocusWindow(w Window) error
+	ForegroundActive(w Window) bool  // true if w is the current foreground window
+	IsTopmost(w Window) bool         // true if w has the WS_EX_TOPMOST style
+	SetTopmost(w Window, on bool) error // pin/unpin w above non-topmost windows
 	CloseWindow(w Window) error
 	MoveWindow(w Window, x, y int) error
 	ResizeWindow(w Window, width, height int) error
 	WindowPID(w Window) uint32 // process that owns the window (may differ from a launcher PID)
+
+	// Input integrity.
+	WatchInput() (InputWatcher, error) // start observing real user input during a run
 
 	// Capture.
 	CaptureScreen() (image.Image, error)

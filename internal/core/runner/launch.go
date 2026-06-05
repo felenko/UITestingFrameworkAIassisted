@@ -71,6 +71,7 @@ func (r *Runner) waitForReady(ctx context.Context, app session.Application) erro
 			if w, err := r.drv.FindWindow(q); err == nil {
 				r.currentWindow = w
 				r.logf("info", "app ready: window %q found", w.Title())
+				r.ensureTopmost()
 				return nil
 			}
 		}
@@ -94,6 +95,7 @@ func (r *Runner) attachMainWindow() {
 	if rw != nil && rw.Window != nil {
 		if w, err := r.drv.FindWindow(r.readyWindowQuery(rw.Window)); err == nil {
 			r.currentWindow = w
+			r.ensureTopmost()
 		}
 	}
 }
@@ -117,6 +119,8 @@ func (r *Runner) readyWindowQuery(wm *session.WindowMatch) platform.WindowQuery 
 
 // shutdownApp tears the app down per session.application.shutdown.
 func (r *Runner) shutdownApp() {
+	// Release any topmost pins first so a window left open isn't stuck on top.
+	r.restoreTopmost()
 	if r.app == nil {
 		return
 	}

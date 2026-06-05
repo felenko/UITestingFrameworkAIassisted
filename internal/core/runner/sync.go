@@ -42,6 +42,103 @@ func (r *Runner) aiEscalationOn() bool {
 	return s != nil && *s
 }
 
+func (r *Runner) focusGuard() bool {
+	s := r.sess.Session.Settings.FocusGuard
+	return s != nil && *s
+}
+
+func (r *Runner) forceTopmost() bool {
+	s := r.sess.Session.Settings.ForceTopmost
+	return s != nil && *s
+}
+
+// forcedWindow remembers a window we pinned topmost and whether it was already
+// topmost before we touched it.
+type forcedWindow struct {
+	w          platform.Window
+	wasTopmost bool
+}
+
+// ensureTopmost pins the bound window above non-topmost windows so a stray
+// normal window can't occlude it during interaction. The window's original
+// topmost state is recorded once per handle so restoreTopmost can put it back.
+// Idempotent and safe to call on every bind/activation.
+func (r *Runner) ensureTopmost() {
+	if !r.forceTopmost() || r.currentWindow == nil {
+		return
+	}
+	h := r.currentWindow.Handle()
+	if r.topmostForced == nil {
+		r.topmostForced = make(map[uintptr]forcedWindow)
+	}
+	if _, seen := r.topmostForced[h]; !seen {
+		r.topmostForced[h] = forcedWindow{w: r.currentWindow, wasTopmost: r.drv.IsTopmost(r.currentWindow)}
+	}
+	if err := r.drv.SetTopmost(r.currentWindow, true); err != nil {
+		r.logf("warn", "force topmost: %v", err)
+	}
+}
+
+// restoreTopmost releases the topmost pin on every window we forced that was not
+// already topmost, so an app left open (or a foreign window) isn't stuck on top.
+func (r *Runner) restoreTopmost() {
+	for _, fw := range r.topmostForced {
+		if fw.wasTopmost {
+			continue // it was topmost before us; leave it as the app intended
+		}
+		if err := r.drv.SetTopmost(fw.w, false); err != nil {
+			r.logf("debug", "restore topmost: %v", err)
+		}
+	}
+	r.topmostForced = nil
+}
+
+// needsForeground reports whether an action delivers input to the focused/
+// foreground window and therefore benefits from a focus guard. Window-management
+// actions (focus/close/move/resize) drive the window directly and are excluded.
+func needsForeground(action string) bool {
+	switch action {
+	case "mouse_click", "mouse_down", "mouse_up", "mouse_drag", "mouse_scroll",
+		"type_text", "key_press", "key_down", "key_up":
+		return true
+	}
+	return false
+}
+
+// isKeyboard reports whether an action delivers keystrokes. Re-sending these on
+// a contaminated attempt would duplicate input, so they are warned about rather
+// than auto-retried.
+func isKeyboard(action string) bool {
+	switch action {
+	case "type_text", "key_press", "key_down", "key_up":
+		return true
+	}
+	return false
+}
+
+// ensureForeground makes the bound window the foreground window before input is
+// sent. A no-op when it is already foreground; otherwise it re-activates it.
+func (r *Runner) ensureForeground() error {
+	if r.currentWindow == nil {
+		return nil
+	}
+	if r.drv.ForegroundActive(r.currentWindow) {
+		return nil
+	}
+	if err := r.drv.FocusWindow(r.currentWindow); err != nil {
+		return fmt.Errorf("could not activate target window before action: %w", err)
+	}
+	return nil
+}
+
+// userInputCount snapshots the watcher's physical-input counter (0 if disabled).
+func (r *Runner) userInputCount() uint64 {
+	if r.inputWatcher == nil {
+		return 0
+	}
+	return r.inputWatcher.UserEvents()
+}
+
 func (r *Runner) actionRetries(cmd *session.Command) int {
 	if cmd.ActionRetries != nil {
 		return *cmd.ActionRetries
@@ -96,8 +193,16 @@ func (r *Runner) runCommand(ctx context.Context, cmd *session.Command, sr *resul
 		verify = defaultVerify(cmd)
 	}
 
+	// A focus guard re-activates the window and watches for user intervention
+	// around input actions. It needs a retry budget even without a verify so a
+	// contaminated non-keyboard action can be re-attempted cleanly.
+	guard := r.focusGuard() && needsForeground(cmd.Action) && r.currentWindow != nil
+
 	retries := 0
 	if verify != nil {
+		retries = r.actionRetries(cmd)
+	}
+	if guard && retries == 0 {
 		retries = r.actionRetries(cmd)
 	}
 
@@ -110,14 +215,42 @@ func (r *Runner) runCommand(ctx context.Context, cmd *session.Command, sr *resul
 		}
 		attempts++
 
+		// Layer 1: make the target foreground before sending input. If it can't
+		// be activated, never deliver input to the wrong window — retry/fail.
+		if guard {
+			if ferr := r.ensureForeground(); ferr != nil {
+				lastErr = ferr
+				r.logf("warn", "  focus guard: %v", ferr)
+				continue
+			}
+			// Keep it above non-topmost windows so nothing occludes the target.
+			r.ensureTopmost()
+		}
+
 		var before image.Image
 		if verify != nil && verify.Changed {
 			before, _ = r.captureContext(condTarget(verify, cmd.Target))
 		}
 
+		// Layer 2: snapshot real user input so we can detect intervention.
+		inputBefore := r.userInputCount()
+
 		if aerr := r.executeCommand(ctx, cmd, sr, caseID); aerr != nil {
 			lastErr = aerr
 			continue
+		}
+
+		// A person touched the real mouse/keyboard during the action. Keyboard
+		// actions can't be re-sent without duplicating input, so they are only
+		// flagged; others re-attempt from a re-asserted foreground.
+		if guard && r.userInputCount() != inputBefore {
+			if isKeyboard(cmd.Action) {
+				r.logf("warn", "  user input detected during %s; result may be unreliable", cmd.Action)
+			} else {
+				lastErr = fmt.Errorf("user input detected during %s; re-attempting", cmd.Action)
+				r.logf("warn", "  %v", lastErr)
+				continue
+			}
 		}
 
 		if verify == nil {

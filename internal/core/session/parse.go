@@ -100,6 +100,12 @@ func (s *Session) applyDefaults() {
 	if set.AIEscalation == nil {
 		set.AIEscalation = boolPtr(true)
 	}
+	if set.FocusGuard == nil {
+		set.FocusGuard = boolPtr(true)
+	}
+	if set.ForceTopmost == nil {
+		set.ForceTopmost = boolPtr(true)
+	}
 	if set.SettleTimeout.Duration == 0 {
 		set.SettleTimeout = D(DefaultSettleTimeout)
 	}

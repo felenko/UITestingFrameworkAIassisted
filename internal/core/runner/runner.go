@@ -51,6 +51,8 @@ type Runner struct {
 	app           *appProcess
 	appPID        uint32
 	currentWindow platform.Window
+	inputWatcher  platform.InputWatcher
+	topmostForced map[uintptr]forcedWindow // windows we forced topmost, keyed by handle
 
 	provider      string
 	model         string
@@ -150,6 +152,19 @@ func (r *Runner) Run(ctx context.Context) (*result.Results, int) {
 		}
 	} else {
 		r.attachMainWindow()
+	}
+
+	// Start watching for real user input so actions can detect intervention.
+	if r.focusGuard() {
+		if iw, err := r.drv.WatchInput(); err != nil {
+			r.logf("warn", "focus guard: input watcher unavailable: %v", err)
+		} else {
+			r.inputWatcher = iw
+			defer func() {
+				r.inputWatcher.Stop()
+				r.inputWatcher = nil
+			}()
+		}
 	}
 
 	aborted := false
