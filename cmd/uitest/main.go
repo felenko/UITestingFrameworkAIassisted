@@ -14,7 +14,7 @@ import (
 )
 
 // Version is the runner version stamped into reports.
-const Version = "0.1.0"
+const Version = "0.2.0"
 
 func main() {
 	if len(os.Args) < 2 {

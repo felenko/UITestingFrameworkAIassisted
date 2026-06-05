@@ -54,6 +54,9 @@ func Parse(path string) (*Session, error) {
 	}
 	s.SourcePath = path
 	s.applyDefaults()
+	if err := s.mergeCredentials(); err != nil {
+		return nil, err
+	}
 	return &s, nil
 }
 

@@ -111,18 +111,21 @@ type cursorAdapter struct{}
 func (cursorAdapter) Name() string { return "cursor" }
 
 func (cursorAdapter) Available() bool {
-	_, err := exec.LookPath("cursor-agent")
-	return err == nil
+	return cursorAgentAvailable()
 }
 
 func (cursorAdapter) BuildCommand(ctx context.Context, prompt, imagePath, model string) *exec.Cmd {
 	if c := envOverride("UITEST_CURSOR_CMD", prompt, imagePath, ctx); c != nil {
 		return c
 	}
-	args := []string{"-p"}
+	bin := ResolveCursorAgent()
+	ws := os.TempDir()
+	args := []string{"-p", "--trust", "--approve-mcps", "--output-format", "json", "--workspace", ws}
 	if model != "" && model != "default" {
 		args = append(args, "--model", model)
 	}
 	args = append(args, prompt)
-	return exec.CommandContext(ctx, "cursor-agent", args...)
+	cmd := exec.CommandContext(ctx, bin, args...)
+	cmd.Dir = ws
+	return cmd
 }

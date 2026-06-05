@@ -161,6 +161,33 @@ func (d *winDriver) FindWindow(q WindowQuery) (Window, error) {
 	return &winWindow{hwnd: matches[0].hwnd, title: matches[0].title}, nil
 }
 
+// FindWindowByPID returns the largest visible top-level window owned by pid.
+func (d *winDriver) FindWindowByPID(pid uint32) (Window, error) {
+	if pid == 0 {
+		return nil, fmt.Errorf("no process id")
+	}
+	var best *candidate
+	bestArea := 0
+	for _, c := range enumWindows() {
+		if windowPID(c.hwnd) != pid {
+			continue
+		}
+		var r rect
+		if res, _, _ := procGetWindowRect.Call(c.hwnd, uintptr(unsafe.Pointer(&r))); res == 0 {
+			continue
+		}
+		area := int(r.Right-r.Left) * int(r.Bottom-r.Top)
+		if area > bestArea {
+			best = &c
+			bestArea = area
+		}
+	}
+	if best == nil {
+		return nil, fmt.Errorf("no visible window for pid %d", pid)
+	}
+	return &winWindow{hwnd: best.hwnd, title: best.title}, nil
+}
+
 func matchTitle(title, want string, re *regexp.Regexp) bool {
 	if strings.Contains(strings.ToLower(title), strings.ToLower(want)) {
 		return true

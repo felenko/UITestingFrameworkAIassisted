@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"image"
+	"strings"
 	"time"
 
 	"github.com/felenko/uitest/internal/core/ai"
@@ -357,7 +358,11 @@ func (r *Runner) pointRungs(ctx context.Context, cond *session.Condition, target
 		}
 	}
 	if cond.Question != "" {
-		if !r.askAI(ctx, cond, target) {
+		ok, err := r.askAI(ctx, cond, target)
+		if err != nil {
+			return false, err
+		}
+		if !ok {
 			return false, nil
 		}
 	}
@@ -383,14 +388,14 @@ func (r *Runner) windowExists(wm *session.WindowMatch) bool {
 }
 
 // askAI evaluates a condition's AI rung against a fresh capture.
-func (r *Runner) askAI(ctx context.Context, cond *session.Condition, target *session.Target) bool {
+func (r *Runner) askAI(ctx context.Context, cond *session.Condition, target *session.Target) (bool, error) {
 	img, err := r.captureContext(condTarget(cond, target))
 	if err != nil {
-		return false
+		return false, nil
 	}
 	rel, err := r.savePNG(img, fmt.Sprintf("cond-%d.png", time.Now().UnixNano()))
 	if err != nil {
-		return false
+		return false, nil
 	}
 	out := r.engine.AssertAI(ctx, ai.Request{
 		Question:  r.bag.Expand(cond.Question),
@@ -399,9 +404,12 @@ func (r *Runner) askAI(ctx context.Context, cond *session.Condition, target *ses
 	})
 	if out.Err != nil {
 		r.logf("debug", "condition AI check error: %v", out.Err)
-		return false
+		if strings.Contains(out.Err.Error(), "Authentication required") {
+			return false, out.Err
+		}
+		return false, nil
 	}
-	return out.Pass
+	return out.Pass, nil
 }
 
 // aiDiagnose asks the AI to describe what is on screen when an action fails.

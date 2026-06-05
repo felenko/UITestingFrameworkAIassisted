@@ -34,8 +34,8 @@ func (r *Runner) windowQuery(t *session.Target) platform.WindowQuery {
 }
 
 // findWindow locates the window a target refers to. If an explicit query can't
-// be resolved (e.g. the title drifted after the app was edited), it falls back
-// to the currently bound window — the app under test — rather than failing.
+// be resolved, it tries the launched app's primary window, then a still-valid
+// current window — never a destroyed handle left over from a closed dialog.
 func (r *Runner) findWindow(t *session.Target) (platform.Window, error) {
 	if t == nil || (t.Window == "" && t.Process == "" && t.Class == "") {
 		if r.currentWindow != nil {
@@ -44,14 +44,23 @@ func (r *Runner) findWindow(t *session.Target) (platform.Window, error) {
 		return nil, fmt.Errorf("no window specified and no current window")
 	}
 	w, err := r.drv.FindWindow(r.windowQuery(t))
-	if err != nil {
-		if r.currentWindow != nil {
+	if err == nil {
+		return w, nil
+	}
+	if r.appPID != 0 {
+		if aw, aerr := r.drv.FindWindowByPID(r.appPID); aerr == nil {
+			r.logf("warn", "window %s not found; using app window %q", t.Describe(), aw.Title())
+			return aw, nil
+		}
+	}
+	if r.currentWindow != nil {
+		if _, berr := r.currentWindow.Bounds(); berr == nil {
 			r.logf("warn", "window %s not found; reusing current window %q", t.Describe(), r.currentWindow.Title())
 			return r.currentWindow, nil
 		}
-		return nil, err
+		r.currentWindow = nil
 	}
-	return w, nil
+	return nil, err
 }
 
 // originFor returns the screen-absolute origin that a relative coordinate is

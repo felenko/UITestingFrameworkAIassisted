@@ -38,6 +38,7 @@ func (stubDriver) KeyDown(string) error                 { return unsupported("Ke
 func (stubDriver) KeyUp(string) error                   { return unsupported("KeyUp") }
 
 func (stubDriver) FindWindow(WindowQuery) (Window, error) { return nil, unsupported("FindWindow") }
+func (stubDriver) FindWindowByPID(uint32) (Window, error) { return nil, unsupported("FindWindowByPID") }
 func (stubDriver) FocusWindow(Window) error              { return unsupported("FocusWindow") }
 func (stubDriver) ForegroundActive(Window) bool          { return false }
 func (stubDriver) IsTopmost(Window) bool                 { return false }
