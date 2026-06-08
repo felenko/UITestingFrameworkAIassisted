@@ -20,6 +20,9 @@ func (a *app) serve() (string, error) {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		w.Write([]byte(uiHTML))
 	})
+	mux.HandleFunc("/events", a.handleEvents)
+	mux.HandleFunc("/load", a.handleLoad)
+	mux.HandleFunc("/run", a.handleRun)
 	mux.HandleFunc("/art/", func(w http.ResponseWriter, r *http.Request) {
 		a.mu.Lock()
 		base := a.outDir

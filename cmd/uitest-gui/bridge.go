@@ -27,18 +27,26 @@ type app struct {
 	reportPath  string
 	cancel      context.CancelFunc
 	running     bool
+	runGen      int // bumped each startRun; only the latest goroutine clears running
+	buf         eventBuffer
 }
 
 func newApp(w webview.WebView) *app { return &app{w: w} }
 
 // bind exposes Go functions to the UI.
 func (a *app) bind() {
-	a.w.Bind("pickSession", a.pickSession)
-	a.w.Bind("loadSession", a.loadSession)
-	a.w.Bind("startRun", a.startRun)
-	a.w.Bind("cancelRun", a.cancelRun)
-	a.w.Bind("openReport", a.openReport)
-	a.w.Bind("openOutputDir", a.openOutputDir)
+	for name, fn := range map[string]any{
+		"pickSession":   a.pickSession,
+		"loadSession":   a.loadSession,
+		"startRun":      a.startRun,
+		"cancelRun":     a.cancelRun,
+		"openReport":    a.openReport,
+		"openOutputDir": a.openOutputDir,
+	} {
+		if err := a.w.Bind(name, fn); err != nil {
+			a.debugLog(fmt.Sprintf("bind %s failed: %v", name, err))
+		}
+	}
 }
 
 // pickSession opens a native file dialog and returns the chosen path.
@@ -119,31 +127,73 @@ type runOptions struct {
 	Cases    []string `json:"cases"` // explicit case ids; empty = all
 }
 
-// startRun begins execution and streams events to the UI.
+// startRun begins execution and streams events to the UI. All heavy work (session
+// load, app launch, cases) runs off the webview UI thread so events can flow back.
 func (a *app) startRun(optsJSON string) error {
 	a.mu.Lock()
-	if a.running {
-		a.mu.Unlock()
-		return fmt.Errorf("a run is already in progress")
-	}
 	path := a.sessionPath
-	a.mu.Unlock()
 	if path == "" {
+		a.mu.Unlock()
 		return fmt.Errorf("no session loaded")
 	}
+	oldCancel := a.cancel
+	a.runGen++
+	gen := a.runGen
+	a.running = true
+	a.mu.Unlock()
+
+	a.buf.reset()
+	a.debugLog(fmt.Sprintf("startRun gen=%d path=%q opts=%s", gen, path, optsJSON))
+	if oldCancel != nil {
+		oldCancel()
+	}
+
+	go a.runAsync(path, optsJSON, gen)
+	return nil
+}
+
+func (a *app) runAsync(path, optsJSON string, gen int) {
+	defer func() {
+		a.mu.Lock()
+		if a.runGen == gen {
+			a.running = false
+		}
+		a.mu.Unlock()
+		if rec := recover(); rec != nil {
+			a.pushEvent(event.Event{
+				Type: event.Log, Level: "error",
+				Message: fmt.Sprintf("run crashed: %v", rec),
+			})
+			a.evalAsync(`window.uitestRunCrashed()`)
+		}
+	}()
+
+	// Let a cancelled prior run exit before we start the next one.
+	time.Sleep(150 * time.Millisecond)
+
+	a.mu.Lock()
+	stale := a.runGen != gen
+	a.mu.Unlock()
+	if stale {
+		return
+	}
+
+	a.pushEvent(event.Event{Type: event.Log, Level: "info", Message: "run accepted — loading session…"})
 
 	var o runOptions
 	if optsJSON != "" {
-		_ = json.Unmarshal([]byte(optsJSON), &o)
+		if err := json.Unmarshal([]byte(optsJSON), &o); err != nil {
+			a.failRun(fmt.Sprintf("invalid run options: %v", err))
+			return
+		}
 	}
 
 	sess, err := session.Load(path)
 	if err != nil {
-		return err
+		a.failRun(fmt.Sprintf("session load failed: %v", err))
+		return
 	}
 
-	// Resolve the output dir up front so the /art/ server can serve live
-	// screenshots while the run is in progress.
 	outDir := o.OutDir
 	if outDir == "" {
 		base := sess.Session.Settings.OutDir
@@ -156,10 +206,15 @@ func (a *app) startRun(optsJSON string) error {
 		outDir = abs
 	}
 
+	filter := o.Filter
+	if len(o.Cases) > 0 {
+		filter = "" // explicit GUI selection wins over the filter box
+	}
+
 	opts := runner.Options{
 		OutDir:        outDir,
 		Provider:      o.Provider,
-		Filter:        o.Filter,
+		Filter:        filter,
 		IDs:           o.Cases,
 		Frontend:      "gui",
 		RunnerVersion: Version,
@@ -174,29 +229,43 @@ func (a *app) startRun(optsJSON string) error {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	a.mu.Lock()
+	if a.runGen != gen {
+		a.mu.Unlock()
+		cancel()
+		return
+	}
 	a.cancel = cancel
-	a.running = true
 	a.outDir = outDir
 	a.reportPath = ""
 	a.mu.Unlock()
 
+	if len(o.Cases) > 0 {
+		a.pushEvent(event.Event{
+			Type: event.Log, Level: "info",
+			Message: fmt.Sprintf("running %d selected case(s)", len(o.Cases)),
+		})
+	}
+
 	r := runner.New(sess, opts, bus)
-	go func() {
-		defer cancel()
-		results, _ := r.Run(ctx)
-		a.mu.Lock()
-		a.running = false
-		a.mu.Unlock()
-		if results != nil {
-			if rp, werr := report.WriteAll(r.OutDir(), results, o.Embed); werr == nil {
-				a.mu.Lock()
+	results, _ := r.Run(ctx)
+	if results != nil && r.OutDir() != "" {
+		if rp, werr := report.WriteAll(r.OutDir(), results, o.Embed); werr == nil {
+			a.mu.Lock()
+			if a.runGen == gen {
 				a.reportPath = rp
-				a.mu.Unlock()
+			}
+			a.mu.Unlock()
+			if a.runGen == gen {
 				a.evalAsync(fmt.Sprintf("window.uitestReport(%s,%s)", jsStr(rp), jsStr(r.OutDir())))
 			}
 		}
-	}()
-	return nil
+	}
+	cancel()
+}
+
+func (a *app) failRun(msg string) {
+	a.pushEvent(event.Event{Type: event.Log, Level: "error", Message: msg})
+	a.evalAsync(fmt.Sprintf("window.uitestRunFailed(%s)", jsStr(msg)))
 }
 
 func (a *app) cancelRun() error {
@@ -230,8 +299,14 @@ func (a *app) openOutputDir() error {
 	return exec.Command("explorer.exe", p).Start()
 }
 
-// pushEvent forwards a core event to the UI on the main thread.
+// pushEvent records an event for HTTP polling and best-effort Eval delivery.
 func (a *app) pushEvent(e event.Event) {
+	n := a.buf.append(e)
+	if e.Type == event.Log {
+		a.debugLog(fmt.Sprintf("[%s] %s", e.Level, e.Message))
+	} else {
+		a.debugLog(fmt.Sprintf("event[%d] %s case=%s", n, e.Type, e.CaseID))
+	}
 	data, err := json.Marshal(e)
 	if err != nil {
 		return

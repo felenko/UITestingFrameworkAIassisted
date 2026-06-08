@@ -187,11 +187,22 @@ async function browse(){try{const p=await window.pickSession();if(p){document.ge
 function loadPath(){const p=document.getElementById('pathInput').value.trim();if(p)doLoad(p);}
 window.uitestPreload=function(p){document.getElementById('pathInput').value=p;doLoad(p);};
 
+async function invokeLoadSession(path){
+  try{
+    const r=await fetch('/load',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({path})});
+    const j=await r.json().catch(()=>({}));
+    if(!r.ok||j.error)throw new Error(j.error||('HTTP '+r.status));
+    return j;
+  }catch(e){
+    if(typeof window.loadSession==='function')return await window.loadSession(path);
+    throw e;
+  }
+}
 async function doLoad(path){
   const errEl=document.getElementById('loadErr');errEl.textContent='';
   caseStatus={}; // fresh session => clear prior pass/fail marks
   try{
-    const s=await window.loadSession(path);
+    const s=await invokeLoadSession(path);
     document.getElementById('title').textContent=s.name;
     document.getElementById('ovName').textContent=s.name;
     document.getElementById('ovApp').textContent=s.app;
@@ -325,11 +336,31 @@ function applySearch(){
 }
 
 let caseStatus={}; // id -> last run status, persisted across runs
+let runQueue=[];   // case ids in the current run, in session order
+let eventCursor=0;
+let pollTimer=null;
 
-// run(true)=checked cases, run(false)=all cases.
+function startEventPoll(){
+  stopEventPoll();
+  eventCursor=0;
+  pollTimer=setInterval(async()=>{
+    try{
+      const r=await fetch('/events?since='+eventCursor);
+      if(!r.ok)return;
+      const j=await r.json();
+      for(const e of (j.events||[]))window.uitestEvent(e);
+      if(typeof j.next==='number')eventCursor=j.next;
+    }catch(_){}
+  },200);
+}
+function stopEventPoll(){
+  if(pollTimer){clearInterval(pollTimer);pollTimer=null;}
+}
+
+// run(true)=checked cases, run(false)=every case in the tree.
 function run(selectedOnly){
-  const cases=selectedOnly?selectedIds():[];
-  if(selectedOnly&&cases.length===0){logline('select at least one case to run');return;}
+  const cases=selectedOnly?selectedIds():Array.from(document.querySelectorAll('.caseChk')).map(c=>c.value);
+  if(!cases.length){logline('select at least one case to run');return;}
   startRunWith(cases);
 }
 // rerunFailed re-runs only the cases that failed/errored in the last run.
@@ -338,23 +369,71 @@ function rerunFailed(){
   if(!ids.length){logline('no failed cases to re-run');return;}
   startRunWith(ids);
 }
+let runWatchdog=null;
 function startRunWith(cases){
-  // Which ids will actually run (empty = all checkboxes present).
-  const runIds=(cases&&cases.length)?cases:Array.from(document.querySelectorAll('.caseChk')).map(c=>c.value);
-  runIds.forEach(id=>{caseStatus[id]='running';setOverviewStatus(id,'running');});
+  const runIds=(cases&&cases.length)?cases:[];
+  if(!runIds.length){logline('select at least one case to run');return;}
+  show('live');
+  runQueue=runIds.slice();
+  // Only the active case is "running"; the rest wait as "pending".
+  runIds.forEach(id=>{caseStatus[id]='pending';setOverviewStatus(id,'pending');});
 
-  totalCases=done=pass=fail=err=0;
+  totalCases=runIds.length;
+  done=pass=fail=err=0;
+  for(const k of Object.keys(caseEls))delete caseEls[k];
   document.getElementById('caseList').innerHTML='';
   document.getElementById('feed').innerHTML='';
   document.getElementById('log').textContent='';
+  document.getElementById('activeStep').textContent='—';
   document.getElementById('liveBanner').innerHTML='<span class="chip running">running</span>';
+  refreshCounts();
   for(const b of ['btnReport','btnFolder','btnRerunAll','btnRerunFailed'])document.getElementById(b).disabled=true;
   setCancel(true);
-  show('live');
-  const opts={provider:document.getElementById('optProvider').value,filter:document.getElementById('optFilter').value,
-    failFast:document.getElementById('optFailFast').checked,embed:document.getElementById('optEmbed').checked,cases:cases};
-  window.startRun(JSON.stringify(opts)).catch(e=>logline('error: '+e));
+  startEventPoll();
+  const opts={provider:document.getElementById('optProvider').value,filter:'',
+    failFast:document.getElementById('optFailFast').checked,embed:document.getElementById('optEmbed').checked,cases:runIds};
+  if(runWatchdog)clearTimeout(runWatchdog);
+  runWatchdog=setTimeout(()=>{
+    if(done===0&&document.getElementById('liveBanner').innerHTML.includes('running'))
+      logline('error: no runner response after 8s — close and restart uitest-gui, then try again');
+  },8000);
+  invokeStartRun(opts).catch(e=>{
+    stopEventPoll();
+    logline('error: '+e);
+    document.getElementById('liveBanner').innerHTML='<span class="banner fail">● FAILED TO START</span>';
+    runIds.forEach(id=>{
+      if(caseStatus[id]==='pending'){delete caseStatus[id];setOverviewStatus(id,'');}
+    });
+    setCancel(false);
+    for(const b of ['btnRerunAll','btnRerunFailed'])document.getElementById(b).disabled=false;
+  });
 }
+async function invokeStartRun(opts){
+  const body=JSON.stringify(opts);
+  try{
+    const r=await fetch('/run',{method:'POST',headers:{'Content-Type':'application/json'},body});
+    const j=await r.json().catch(()=>({}));
+    if(!r.ok||j.error)throw new Error(j.error||('HTTP '+r.status));
+  }catch(e){
+    if(typeof window.startRun==='function'){await window.startRun(body);return;}
+    throw e;
+  }
+}
+window.uitestRunCrashed=function(){
+  if(runWatchdog)clearTimeout(runWatchdog);
+  document.getElementById('liveBanner').innerHTML='<span class="banner fail">● RUN CRASHED</span>';
+  setCancel(false);
+};
+window.uitestRunFailed=function(msg){
+  if(runWatchdog)clearTimeout(runWatchdog);
+  logline('error: '+msg);
+  document.getElementById('liveBanner').innerHTML='<span class="banner fail">● '+esc(msg)+'</span>';
+  runQueue.forEach(id=>{
+    if(caseStatus[id]==='pending'){delete caseStatus[id];setOverviewStatus(id,'');}
+  });
+  setCancel(false);
+  for(const b of ['btnRerunAll','btnRerunFailed'])document.getElementById(b).disabled=false;
+};
 function backToSession(){show('overview');}
 function setOverviewStatus(id,status){
   const span=document.querySelector('#ovTree .cstat[data-id="'+cssAttr(id)+'"]');
@@ -366,7 +445,7 @@ function setCancel(on){for(const b of ['btnCancel','btnCancel2'])document.getEle
 function openReport(){window.openReport().catch(e=>logline('open report failed: '+e));}
 function openFolder(){window.openOutputDir().catch(e=>logline('open folder failed: '+e));}
 
-const caseEls={};
+let caseEls={};
 function caseEl(id){
   if(caseEls[id])return caseEls[id];
   const d=document.createElement('div');d.className='ci';
@@ -379,10 +458,17 @@ function setCaseChip(id,status,dur){const d=caseEl(id);const c=d.querySelector('
 window.uitestEvent=function(e){
   switch(e.type){
     case 'run.started':
+      if(runWatchdog)clearTimeout(runWatchdog);
       totalCases=e.total||0;document.getElementById('cTotal').textContent=totalCases;
-      logline('▶ '+e.session+' — '+totalCases+' case(s)');break;
+      runQueue.forEach(id=>{caseEl(id);setCaseChip(id,'pending');});
+      logline('▶ '+e.session+' — '+totalCases+' case(s)');
+      if(totalCases===0)logline('warn: no cases matched the selection');break;
     case 'case.started':
-      caseEl(e.caseId);setCaseChip(e.caseId,'running');break;
+      caseEl(e.caseId);
+      caseStatus[e.caseId]='running';
+      setCaseChip(e.caseId,'running');
+      setOverviewStatus(e.caseId,'running');
+      break;
     case 'step.started':
       document.getElementById('activeStep').textContent=`[${e.caseId}] ${e.human||''}`;break;
     case 'screenshot.captured':
@@ -396,9 +482,20 @@ window.uitestEvent=function(e){
       setOverviewStatus(e.caseId,e.status);
       refreshCounts();break;
     case 'run.finished':
+      if(runWatchdog)clearTimeout(runWatchdog);
+      runQueue.forEach(id=>{
+        if(caseStatus[id]==='pending'){
+          caseStatus[id]='skipped';
+          setCaseChip(id,'skipped');
+          setOverviewStatus(id,'skipped');
+        }
+      });
       finishRun(e.status);break;
     case 'log':
-      if(e.level!=='debug'&&e.level!=='trace')logline('['+e.level+'] '+e.message);break;
+      if(e.level!=='debug'&&e.level!=='trace')logline('['+e.level+'] '+e.message);
+      if(e.level==='error'&&e.message&&(e.message.includes('environment check')||e.message.includes('failed to launch')||e.message.includes('preparing output')))
+        document.getElementById('liveBanner').innerHTML='<span class="banner fail">● '+esc(e.message)+'</span>';
+      break;
   }
 };
 window.uitestReport=function(reportPath,outDir){
@@ -425,6 +522,7 @@ function refreshCounts(){
   document.getElementById('bar').style.width=(totalCases?Math.round(done/totalCases*100):0)+'%';
 }
 function finishRun(status){
+  stopEventPoll();
   setCancel(false);
   const ok=(status!=='failed');
   document.getElementById('liveBanner').innerHTML=ok?'<span class="banner pass">● PASS</span>':'<span class="banner fail">● FAIL</span>';
@@ -435,6 +533,15 @@ function finishRun(status){
 }
 function logline(s){const l=document.getElementById('log');l.textContent+=s+'\n';l.scrollTop=l.scrollHeight;}
 function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
+
+(function bootSessionFromURL(){
+  function boot(){
+    const p=new URLSearchParams(location.search).get('session');
+    if(p){document.getElementById('pathInput').value=p;doLoad(p);}
+  }
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot);
+  else boot();
+})();
 </script>
 </body>
 </html>

@@ -6,6 +6,7 @@ package main
 import (
 	_ "embed"
 	"fmt"
+	"net/url"
 	"os"
 
 	webview "github.com/webview/webview_go"
@@ -33,14 +34,11 @@ func main() {
 		fmt.Fprintf(os.Stderr, "failed to start UI server: %v\n", err)
 		os.Exit(1)
 	}
-	w.Navigate(base)
-
-	// If a session was passed on the command line, load it once the UI is ready.
+	navURL := base
 	if args.session != "" {
-		w.Dispatch(func() {
-			w.Eval(fmt.Sprintf("window.uitestPreload(%s)", jsStr(args.session)))
-		})
+		navURL = base + "?session=" + url.QueryEscape(args.session)
 	}
+	w.Navigate(navURL)
 
 	w.Run()
 }

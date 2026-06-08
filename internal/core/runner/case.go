@@ -140,7 +140,9 @@ func (r *Runner) runPhase(ctx context.Context, caseID, phase string, steps []ses
 		sr := r.runStep(ctx, caseID, phase, i, &steps[i])
 		out = append(out, sr)
 		if sr.Status == result.StatusFailed || sr.Status == result.StatusError {
-			if cr != nil {
+			// Optional steps (e.g. "log in if still at Please Login") use
+			// continueOnFailure: their failure must not poison the case verdict.
+			if cr != nil && !steps[i].ContinueOnFailure {
 				cr.Status = sr.Status
 			}
 			if !steps[i].ContinueOnFailure {

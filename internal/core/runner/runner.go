@@ -102,14 +102,13 @@ func (r *Runner) logf(level, format string, args ...any) {
 // Run executes the session and returns the results plus a process exit code
 // (docs/02 §1 exit codes).
 func (r *Runner) Run(ctx context.Context) (*result.Results, int) {
-	if err := r.setupOutput(); err != nil {
-		return nil, exitSetup(fmt.Errorf("preparing output: %w", err))
-	}
 	defer func() {
 		if r.logFile != nil {
 			r.logFile.Close()
 		}
 	}()
+
+	cases := r.selectCases()
 
 	results := &result.Results{
 		Session:       r.sess.Session.Name,
@@ -123,25 +122,36 @@ func (r *Runner) Run(ctx context.Context) (*result.Results, int) {
 	}
 
 	_ = r.drv.SetDPIAware()
+	r.bus.Publish(event.Event{Type: event.RunStarted, Session: r.sess.Session.Name, Total: len(cases)})
+
+	if len(cases) == 0 {
+		r.logf("warn", "no test cases matched the selection or filter")
+		results.FinishedAt = time.Now()
+		return r.finishRun(results, exitOK), exitOK
+	}
+
+	if err := r.setupOutput(); err != nil {
+		r.logf("error", "preparing output: %v", err)
+		results.FinishedAt = time.Now()
+		code := exitSetup(err)
+		return r.finishRun(results, code), code
+	}
 	r.bag.Set("session.outDir", r.outDir)
 	r.bag.Set("timestamp", time.Now().Format("20060102-150405"))
-
-	cases := r.selectCases()
-	r.bus.Publish(event.Event{Type: event.RunStarted, Session: r.sess.Session.Name, Total: len(cases)})
 
 	if r.opts.DryRun {
 		r.logf("info", "dry-run: %d case(s) would execute; not launching app", len(cases))
 		results.FinishedAt = time.Now()
 		results.Summary.Total = len(cases)
 		results.Summary.Skipped = len(cases)
-		return results, 0
+		return r.finishRun(results, 0), 0
 	}
 
 	// Doctor: provider + capture reachable.
 	if code, err := r.doctor(); err != nil {
 		r.logf("error", "environment check failed: %v", err)
 		results.FinishedAt = time.Now()
-		return results, code
+		return r.finishRun(results, code), code
 	}
 
 	// Launch app.
@@ -149,7 +159,8 @@ func (r *Runner) Run(ctx context.Context) (*result.Results, int) {
 		if err := r.launchApp(ctx); err != nil {
 			r.logf("error", "application failed to launch: %v", err)
 			results.FinishedAt = time.Now()
-			return results, exitSetup(err)
+			code := exitSetup(err)
+			return r.finishRun(results, code), code
 		}
 	} else {
 		r.attachMainWindow()
@@ -194,17 +205,27 @@ func (r *Runner) Run(ctx context.Context) (*result.Results, int) {
 	r.shutdownApp()
 
 	results.FinishedAt = time.Now()
+	if aborted {
+		return r.finishRun(results, exitAborted), exitAborted
+	}
+	return r.finishRun(results, exitFor(results)), exitFor(results)
+}
+
+// finishRun computes the summary, publishes run.finished for the GUI/CLI, and
+// returns the results struct. Always call on every exit path so the UI is not
+// left with cases stuck in "pending".
+func (r *Runner) finishRun(results *result.Results, code int) *result.Results {
 	r.computeSummary(results)
+	status := "failed"
+	if code == exitOK {
+		status = string(overallStatus(results))
+	}
 	r.bus.Publish(event.Event{
 		Type:    event.RunFinished,
-		Status:  string(overallStatus(results)),
+		Status:  status,
 		Total:   results.Summary.Total,
 	})
-
-	if aborted {
-		return results, exitAborted
-	}
-	return results, exitFor(results)
+	return results
 }
 
 func (r *Runner) environment() result.Environment {
