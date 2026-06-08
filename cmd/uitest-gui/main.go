@@ -12,7 +12,7 @@ import (
 )
 
 // Version mirrors the CLI runner version.
-const Version = "0.2.0"
+const Version = "0.2.1"
 
 //go:embed ui.html
 var uiHTML string
