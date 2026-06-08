@@ -89,7 +89,20 @@ session:
     settleInterval: 250ms     # poll / stability sampling interval
     defaultActionRetries: 2   # re-attempts of an action when verify fails
     aiEscalation: true        # on exhausted retries, ask the AI to diagnose what's blocking
+
+    # --- input integrity (guard against accidental user interaction) ---
+    focusGuard: true          # before each input action, make the bound window foreground and
+                              # detect physical user input during the action; re-assert + retry
+    forceTopmost: true        # keep the bound window above non-topmost windows so nothing occludes it
 ```
+
+> **Input integrity.** `focusGuard` (default `true`) re-asserts the target as the foreground
+> window before every mouse/keyboard action and watches for *physical* user input during the
+> action, re-asserting and retrying when a person interferes; `forceTopmost` (default `true`) pins
+> the bound window above non-topmost windows so a stray window can't occlude a click. Disable both
+> for **modal-heavy flows that manage focus themselves** (explicit `focus_window` steps plus owned
+> dialogs such as a "Logon failed" message box): the guard can otherwise fail to foreground the
+> parent window while its own modal child holds the foreground.
 
 ### Field reference — `application`
 

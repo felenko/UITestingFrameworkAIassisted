@@ -298,6 +298,46 @@ func (Settings) JSONSchemaExtend(s *jsonschema.Schema) {
 	setEnum(s, "coordinateSpace", "window", "screen")
 }
 
+func (Settings) GetFieldDocString(field string) string {
+	return map[string]string{
+		"OutDir":              "Base output directory; a timestamped subfolder is created per run.",
+		"DefaultStepTimeout":  "Default per-step timeout (default 15s).",
+		"FailFast":            "Stop the session at the first failed case.",
+		"ScreenshotOnFailure": "Capture the screen whenever a step fails.",
+		"WindowMatch":         "Default window match strategy: title, process, or class.",
+		"CoordinateSpace":     "Default coordinate space for targets: window or screen.",
+		"DPIAware":            "Make the runner DPI-aware so coordinates are physical pixels.",
+		"AutoSettle":          "Wait for visual stability before each action and auto-verify clicks (default true).",
+		"SettleTimeout":       "Max wait for readiness/verify (default 5s).",
+		"SettleInterval":      "Poll / stability sampling interval (default 250ms).",
+		"DefaultActionRetries": "Re-attempts of an action when its verify fails (default 2).",
+		"AIEscalation":        "On exhausted retries, ask the AI to diagnose what is blocking (default true).",
+		"FocusGuard":          "Before each input action, make the bound window foreground and detect physical user input during it, re-asserting and retrying on interference (default true). Disable for modal-heavy flows that manage focus themselves.",
+		"ForceTopmost":        "Keep the bound window above non-topmost windows so nothing occludes it (default true).",
+	}[field]
+}
+
+func (AI) GetFieldDocString(field string) string {
+	return map[string]string{
+		"Provider": "AI assertion provider: claude, codex, or cursor.",
+		"Model":    "Optional model override for the provider.",
+		"Timeout":  "Per-call AI timeout.",
+		"Retries":  "Transient-failure retries for an AI call.",
+		"Samples":  "Number of samples; >1 enables majority vote for flaky answers.",
+	}[field]
+}
+
+func (Application) GetFieldDocString(field string) string {
+	return map[string]string{
+		"Path":           "Executable to launch (required).",
+		"Args":           "Command-line arguments.",
+		"WorkingDir":     "Working directory for the launched process.",
+		"StartupTimeout": "How long to wait for the app to become ready.",
+		"ReadyWhen":      "How the runner knows the app is ready (window match, delay, or AI).",
+		"Shutdown":       "How to close the app at the end: graceful, force, or leaveOpen.",
+	}[field]
+}
+
 func (TestCase) JSONSchemaExtend(s *jsonschema.Schema) {
 	s.Required = []string{"id", "name", "steps"}
 	if p, ok := s.Properties.Get("steps"); ok {

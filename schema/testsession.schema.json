@@ -11,19 +11,24 @@
             "claude",
             "codex",
             "cursor"
-          ]
+          ],
+          "description": "AI assertion provider: claude, codex, or cursor."
         },
         "model": {
-          "type": "string"
+          "type": "string",
+          "description": "Optional model override for the provider."
         },
         "timeout": {
-          "$ref": "#/$defs/Duration"
+          "$ref": "#/$defs/Duration",
+          "description": "Per-call AI timeout."
         },
         "retries": {
-          "type": "integer"
+          "type": "integer",
+          "description": "Transient-failure retries for an AI call."
         },
         "samples": {
-          "type": "integer"
+          "type": "integer",
+          "description": "Number of samples; \u003e1 enables majority vote for flaky answers."
         }
       },
       "additionalProperties": false,
@@ -32,19 +37,24 @@
     "Application": {
       "properties": {
         "path": {
-          "type": "string"
+          "type": "string",
+          "description": "Executable to launch (required)."
         },
         "args": {
-          "$ref": "#/$defs/StringList"
+          "$ref": "#/$defs/StringList",
+          "description": "Command-line arguments."
         },
         "workingDir": {
-          "type": "string"
+          "type": "string",
+          "description": "Working directory for the launched process."
         },
         "startupTimeout": {
-          "$ref": "#/$defs/Duration"
+          "$ref": "#/$defs/Duration",
+          "description": "How long to wait for the app to become ready."
         },
         "readyWhen": {
-          "$ref": "#/$defs/ReadyWhen"
+          "$ref": "#/$defs/ReadyWhen",
+          "description": "How the runner knows the app is ready (window match, delay, or AI)."
         },
         "shutdown": {
           "type": "string",
@@ -52,7 +62,8 @@
             "graceful",
             "force",
             "leaveOpen"
-          ]
+          ],
+          "description": "How to close the app at the end: graceful, force, or leaveOpen."
         }
       },
       "additionalProperties": false,
@@ -586,16 +597,20 @@
     "Settings": {
       "properties": {
         "outDir": {
-          "type": "string"
+          "type": "string",
+          "description": "Base output directory; a timestamped subfolder is created per run."
         },
         "defaultStepTimeout": {
-          "$ref": "#/$defs/Duration"
+          "$ref": "#/$defs/Duration",
+          "description": "Default per-step timeout (default 15s)."
         },
         "failFast": {
-          "type": "boolean"
+          "type": "boolean",
+          "description": "Stop the session at the first failed case."
         },
         "screenshotOnFailure": {
-          "type": "boolean"
+          "type": "boolean",
+          "description": "Capture the screen whenever a step fails."
         },
         "windowMatch": {
           "type": "string",
@@ -603,38 +618,48 @@
             "title",
             "process",
             "class"
-          ]
+          ],
+          "description": "Default window match strategy: title, process, or class."
         },
         "coordinateSpace": {
           "type": "string",
           "enum": [
             "window",
             "screen"
-          ]
+          ],
+          "description": "Default coordinate space for targets: window or screen."
         },
         "dpiAware": {
-          "type": "boolean"
+          "type": "boolean",
+          "description": "Make the runner DPI-aware so coordinates are physical pixels."
         },
         "autoSettle": {
-          "type": "boolean"
+          "type": "boolean",
+          "description": "Wait for visual stability before each action and auto-verify clicks (default true)."
         },
         "settleTimeout": {
-          "$ref": "#/$defs/Duration"
+          "$ref": "#/$defs/Duration",
+          "description": "Max wait for readiness/verify (default 5s)."
         },
         "settleInterval": {
-          "$ref": "#/$defs/Duration"
+          "$ref": "#/$defs/Duration",
+          "description": "Poll / stability sampling interval (default 250ms)."
         },
         "defaultActionRetries": {
-          "type": "integer"
+          "type": "integer",
+          "description": "Re-attempts of an action when its verify fails (default 2)."
         },
         "aiEscalation": {
-          "type": "boolean"
+          "type": "boolean",
+          "description": "On exhausted retries, ask the AI to diagnose what is blocking (default true)."
         },
         "focusGuard": {
-          "type": "boolean"
+          "type": "boolean",
+          "description": "Before each input action, make the bound window foreground and detect physical user input during it, re-asserting and retrying on interference (default true). Disable for modal-heavy flows that manage focus themselves."
         },
         "forceTopmost": {
-          "type": "boolean"
+          "type": "boolean",
+          "description": "Keep the bound window above non-topmost windows so nothing occludes it (default true)."
         }
       },
       "additionalProperties": false,
