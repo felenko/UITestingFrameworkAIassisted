@@ -212,9 +212,12 @@ func (d *winDriver) FocusWindow(w Window) error {
 	procSystemParametersInfo.Call(spiSetForegroundLockTimeout, 0, 0, spifSendChange)
 
 	for attempt := 0; attempt < 5; attempt++ {
+		// Only change show state when the window is hidden or minimized. Calling
+		// ShowWindow on an already-visible normal/maximized window can resize or
+		// flicker some apps (e.g. WPF login/shell dialogs already on screen).
 		if iconic, _, _ := procIsIconic.Call(hwnd); iconic != 0 {
 			procShowWindow.Call(hwnd, swRestore)
-		} else {
+		} else if vis, _, _ := procIsWindowVisible.Call(hwnd); vis == 0 {
 			procShowWindow.Call(hwnd, swShow)
 		}
 		procBringWindowToTop.Call(hwnd)
@@ -244,6 +247,15 @@ func (d *winDriver) FocusWindow(w Window) error {
 		}
 	}
 	return fmt.Errorf("could not bring window %q to the foreground", w.Title())
+}
+
+// ForegroundWindow returns the top-level window that currently owns keyboard focus.
+func (d *winDriver) ForegroundWindow() (Window, error) {
+	hwnd, _, _ := procGetForegroundWindow.Call()
+	if hwnd == 0 {
+		return nil, fmt.Errorf("no foreground window")
+	}
+	return &winWindow{hwnd: hwnd, title: getWindowText(hwnd)}, nil
 }
 
 // ForegroundActive reports whether w is the current foreground window. Cheap
@@ -288,7 +300,25 @@ func (d *winDriver) CloseWindow(w Window) error {
 	return nil
 }
 
+// geomTolerance is how many pixels bounds may differ and still count as "already there".
+const geomTolerance = 2
+
+func intClose(a, b int) bool {
+	d := a - b
+	if d < 0 {
+		d = -d
+	}
+	return d <= geomTolerance
+}
+
 func (d *winDriver) MoveWindow(w Window, x, y int) error {
+	b, err := w.Bounds()
+	if err == nil && intClose(b.X, x) && intClose(b.Y, y) {
+		return nil // already at target position — don't touch show state
+	}
+	// A maximized (or minimized) window can't be repositioned meaningfully —
+	// restore it to a normal state first so the move actually takes effect.
+	unmaximize(w.Handle())
 	res, _, err := procSetWindowPos.Call(w.Handle(), 0,
 		uintptr(int32(x)), uintptr(int32(y)), 0, 0, swpNoZOrder|swpNoSize)
 	if res == 0 {
@@ -298,10 +328,29 @@ func (d *winDriver) MoveWindow(w Window, x, y int) error {
 }
 
 func (d *winDriver) ResizeWindow(w Window, width, height int) error {
+	b, err := w.Bounds()
+	if err == nil && intClose(b.Width, width) && intClose(b.Height, height) {
+		return nil // already at target size — don't unmaximize or resize
+	}
+	// A maximized window ignores an explicit size; restore it first so the
+	// requested geometry (used to keep window-relative coordinates valid) sticks.
+	unmaximize(w.Handle())
 	res, _, err := procSetWindowPos.Call(w.Handle(), 0, 0, 0,
 		uintptr(int32(width)), uintptr(int32(height)), swpNoZOrder|swpNoMove)
 	if res == 0 {
 		return errno("SetWindowPos(resize)", err)
 	}
 	return nil
+}
+
+// unmaximize restores a maximized or minimized window to its normal state so
+// move/resize can apply an exact geometry. A no-op for already-normal windows.
+func unmaximize(hwnd uintptr) {
+	if zoomed, _, _ := procIsZoomed.Call(hwnd); zoomed != 0 {
+		procShowWindow.Call(hwnd, swRestore)
+		return
+	}
+	if iconic, _, _ := procIsIconic.Call(hwnd); iconic != 0 {
+		procShowWindow.Call(hwnd, swRestore)
+	}
 }

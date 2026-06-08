@@ -56,6 +56,14 @@ type Target struct {
 	// Coordinate space + DPI handling.
 	RelativeTo string `yaml:"relativeTo"` // window | screen
 	Raw        bool   `yaml:"raw"`
+
+	// Exact requires the matched window to belong to the app under test. When
+	// set, a title/class match owned by a foreign process (e.g. a File Explorer
+	// whose title merely contains the app name) is rejected and NO app-window
+	// fallback is used — so the action cleanly errors instead of acting on the
+	// wrong window. Useful for best-effort hooks that must no-op when the target
+	// window genuinely does not exist yet.
+	Exact bool `yaml:"exact"`
 }
 
 // targetAlias avoids infinite recursion in UnmarshalYAML.

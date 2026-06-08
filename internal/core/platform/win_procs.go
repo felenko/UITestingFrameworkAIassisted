@@ -44,6 +44,7 @@ var (
 	procShowWindow              = user32.NewProc("ShowWindow")
 	procBringWindowToTop        = user32.NewProc("BringWindowToTop")
 	procIsIconic                = user32.NewProc("IsIconic")
+	procIsZoomed                = user32.NewProc("IsZoomed")
 	procPostMessageW            = user32.NewProc("PostMessageW")
 	procSetWindowPos            = user32.NewProc("SetWindowPos")
 	procAttachThreadInput       = user32.NewProc("AttachThreadInput")

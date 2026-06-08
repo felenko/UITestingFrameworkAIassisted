@@ -68,6 +68,19 @@ func cmdList(args []string) int {
 	fmt.Printf("Session: %s\n", sess.Session.Name)
 	fmt.Printf("App: %s\n", sess.Session.Application.Path)
 	fmt.Printf("Provider: %s\n\n", sess.Session.AI.Provider)
+
+	// Session-level lifecycle hooks (best-effort; run outside any single case).
+	if len(sess.Session.Setup)+len(sess.Session.BeforeEach)+len(sess.Session.AfterEach)+len(sess.Session.RecoverSteps) > 0 {
+		fmt.Println("◆ session hooks")
+		printSteps("session.setup", sess.Session.Setup)
+		printSteps("session.beforeEach", sess.Session.BeforeEach)
+		printSteps("session.afterEach", sess.Session.AfterEach)
+		if len(sess.Session.RecoverSteps) > 0 {
+			printSteps("session.recoverSteps (on case-failure recovery)", sess.Session.RecoverSteps)
+		}
+		fmt.Println()
+	}
+
 	for _, tc := range sess.TestCases {
 		fmt.Printf("● %s — %s", tc.ID, tc.Name)
 		if len(tc.Tags) > 0 {
@@ -85,6 +98,7 @@ func cmdList(args []string) int {
 			fmt.Printf("        assert[%d] (%s, expect %s): %s\n", i, a.Action, defExpect(a.Expect), truncate(label, 70))
 		}
 		printSteps("teardown", tc.Teardown)
+		printSteps("cleanup", tc.Cleanup)
 		fmt.Println()
 	}
 	return 0

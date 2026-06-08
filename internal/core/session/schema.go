@@ -155,6 +155,7 @@ func (Target) GetFieldDocString(field string) string {
 		"Rect":       "A rectangular region {x, y, width, height}.",
 		"RelativeTo": "Coordinate space for x/y: window (default) or screen.",
 		"Raw":        "Treat coordinates as raw device pixels (skip DPI scaling).",
+		"Exact":      "Require the matched window to belong to the app under test; reject foreign title/class collisions with no app-window fallback (the action errors instead of acting on the wrong window).",
 	}[field]
 }
 
@@ -284,6 +285,20 @@ func (SessionInfo) JSONSchemaExtend(s *jsonschema.Schema) {
 	s.Required = []string{"application"}
 }
 
+func (SessionInfo) GetFieldDocString(field string) string {
+	return map[string]string{
+		"Name":        "Human-readable session name.",
+		"Description": "What this session verifies.",
+		"Application": "The application under test (required).",
+		"AI":          "AI assertion-engine configuration.",
+		"Settings":    "Global runner settings.",
+		"Setup":       "Best-effort steps run ONCE after the app is ready, before any case. Failures are logged, not fatal.",
+		"BeforeEach":  "Best-effort steps run before EVERY test case (e.g. pin window geometry). Failures are logged, never change a verdict; they may no-op when the target window is absent.",
+		"AfterEach":   "Best-effort steps run after EVERY test case. Failures are logged, never change a verdict.",
+		"RecoverSteps": "Steps run strictly after a kill-and-relaunch when recoverOnCaseFailure is on and a case failed (e.g. log in again). beforeEach runs afterward.",
+	}[field]
+}
+
 func (Application) JSONSchemaExtend(s *jsonschema.Schema) {
 	s.Required = []string{"path"}
 	setEnum(s, "shutdown", "graceful", "force", "leaveOpen")
@@ -313,7 +328,8 @@ func (Settings) GetFieldDocString(field string) string {
 		"DefaultActionRetries": "Re-attempts of an action when its verify fails (default 2).",
 		"AIEscalation":        "On exhausted retries, ask the AI to diagnose what is blocking (default true).",
 		"FocusGuard":          "Before each input action, make the bound window foreground and detect physical user input during it, re-asserting and retrying on interference (default true). Disable for modal-heavy flows that manage focus themselves.",
-		"ForceTopmost":        "Keep the bound window above non-topmost windows so nothing occludes it (default true).",
+		"ForceTopmost":         "Keep the bound window above non-topmost windows so nothing occludes it (default true).",
+		"RecoverOnCaseFailure": "On case failure: force-kill the app, relaunch, run recoverSteps, run beforeEach, retry the case once (default false).",
 	}[field]
 }
 

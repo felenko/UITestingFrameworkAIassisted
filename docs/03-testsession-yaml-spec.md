@@ -45,7 +45,8 @@ testCases:                     # ordered list of scenarios
     setup:      [ ...steps... ]  # optional, runs before steps
     steps:      [ ...steps... ]  # the scenario (each step: human + machine)
     validation: { ... }          # how pass/fail is decided (human + assert)
-    teardown:   [ ...steps... ]  # optional, always runs
+    teardown:   [ ...steps... ]  # optional, always runs (legacy; prefer cleanup)
+    cleanup:    [ ...steps... ]  # optional, always runs after teardown; restores UI state
 ```
 
 ---
@@ -96,7 +97,10 @@ session:
     forceTopmost: true        # keep the bound window above non-topmost windows so nothing occludes it
 ```
 
-> **Input integrity.** `focusGuard` (default `true`) re-asserts the target as the foreground
+> **Input integrity.** The runner **always** binds and activates the correct window before
+> every `mouse_click` and keyboard action (`type_text`, `key_press`, …), including modals
+> owned by the app under test. `focusGuard` (default `true`) adds an extra layer: it watches
+> for physical user intervention during the action and re-asserts the target as the foreground
 > window before every mouse/keyboard action and watches for *physical* user input during the
 > action, re-asserting and retrying when a person interferes; `forceTopmost` (default `true`) pins
 > the bound window above non-topmost windows so a stray window can't occlude a click. Disable both
@@ -124,6 +128,82 @@ session:
 | `timeout` | no | Per-question timeout. Default `30s`. |
 | `retries` | no | Retries on transient CLI/network failure. Default `1`. |
 | `samples` | no | If `>1`, ask N times and take the majority verdict. Default `1`. |
+
+### Session lifecycle hooks — `setup` / `beforeEach` / `afterEach`
+
+Steps that run **outside any single test case**, to bootstrap or restore shared
+state. They live directly under `session:` (siblings of `settings`).
+
+```yaml
+session:
+  # ...application / ai / settings...
+
+  setup:                       # runs ONCE, after the app is ready, before any case
+    - human: "..."
+      machine: [ ... ]
+
+  beforeEach:                  # runs before EVERY test case (before its own setup)
+    - human: "Pin the main window to the calibration geometry"
+      machine:
+        - action: focus_window
+          target: { window: "MyApp", exact: true }
+        - action: move_window
+          target: { window: "MyApp", exact: true }
+          x: 0
+          y: 0
+        - action: resize_window
+          target: { window: "MyApp", exact: true }
+          width: 1920
+          height: 1023
+
+  afterEach:                   # runs after EVERY test case (after its teardown)
+    - human: "..."
+      machine: [ ... ]
+```
+
+| Hook | When | Failure behaviour |
+| --- | --- | --- |
+| `session.setup` | Once, after the app is ready, before the first case. | **Best-effort:** step failures are logged, never abort the run. |
+| `session.beforeEach` | Before every test case (ahead of the case's own `setup`). | **Best-effort:** logged; never changes a case verdict. |
+| `session.afterEach` | After every test case (after its `teardown`). | **Best-effort:** logged; never changes a case verdict. |
+
+> **Why best-effort?** Hooks bootstrap state and may legitimately no-op — e.g. a
+> geometry-pinning `beforeEach` that targets the main shell window will simply do
+> nothing during the login cases (before that window exists). Pair it with
+> `target: { ..., exact: true }` (see §6) so it never acts on the wrong window.
+>
+> **Geometry & coordinates.** With `coordinateSpace: window`, pixel coordinates
+> are relative to the window's top-left, so only the window **size** must match
+> what the coordinates were captured at. A `beforeEach` that `resize_window`s the
+> shell to the capture size (and `move_window`s it fully on-screen) keeps brittle
+> pixel coordinates valid regardless of how/where the app launches.
+
+### Case-failure recovery — `recoverOnCaseFailure` / `recoverSteps`
+
+When a case fails, the runner can eliminate dirty UI state by killing the app,
+relaunching, restoring session state, and retrying the case **once**:
+
+```yaml
+session:
+  settings:
+    recoverOnCaseFailure: true   # default false
+
+  recoverSteps:                  # strict; runs after relaunch, before beforeEach
+    - human: "Log in after clean restart"
+      machine:
+        - action: focus_window
+          target: { window: "Please Login" }
+        # ... credential entry, wait for main shell ...
+```
+
+| Piece | When | Failure behaviour |
+| --- | --- | --- |
+| `settings.recoverOnCaseFailure` | After a failed case (before recording the verdict). | Off by default. Ignored with `--no-app-launch`. |
+| `session.recoverSteps` | After kill-and-relaunch, before `beforeEach` on the recovery retry. | **Strict:** recovery aborts; the original case failure is kept. May be empty (relaunch + `beforeEach` only). |
+
+Recovery runs **instead of** per-case `retries` when enabled. Use `recoverSteps` to
+re-establish logged-in state; pair with a geometry-pinning `beforeEach` so pixel
+coordinates stay valid on the retry.
 
 ---
 
@@ -155,7 +235,8 @@ testCases:
           question: "Does the editor contain the text 'Hello'?"
           target: { window: "Untitled - Notepad" }
           expect: yes
-    teardown: []               # optional cleanup (always runs)
+    teardown: []               # optional (legacy; prefer cleanup)
+    cleanup:  []               # optional state restoration (always runs, even on failure)
 ```
 
 | Field | Required | Description |
@@ -165,7 +246,7 @@ testCases:
 | `description` | no | Longer plain-English explanation / acceptance criteria. |
 | `folder` | no | Optional `/`-separated group path (e.g. `"Auth/Login"`) for organizing large suites. Purely organizational metadata: the runner ignores it, but the GUI renders cases as a collapsible folder tree. |
 | `tags` | no | Labels for filtering. |
-| `setup` / `teardown` | no | Step lists; `teardown` always runs, even after failure. |
+| `setup` / `teardown` / `cleanup` | no | Step lists; `teardown` and `cleanup` always run, even after failure. Prefer `cleanup` for dismissing modals and resetting UI state. |
 | `steps` | yes | The ordered steps that make up the scenario (each has `human` + `machine`). |
 | `validation` | yes | The pass/fail decision: a `human` description + a machine `assert` list. |
 
@@ -427,6 +508,14 @@ self-correcting (full semantics in [02 §3.5](02-test-runner-spec.md#35-synchron
 
 - `relativeTo` defaults to `settings.coordinateSpace` (`window`).
 - Coordinates are DPI-aware logical pixels unless `raw: true`.
+- `exact: true` (window targets) requires the match to belong to the **app under
+  test**. A title/class match owned by a foreign process (e.g. a File Explorer
+  window whose title merely contains the app name) is rejected, and **no
+  app-window fallback** is used — the action errors cleanly instead of driving
+  the wrong window. Ideal for best-effort hooks that must no-op when their target
+  window does not exist yet. Without `exact`, the runner still prefers the app's
+  own window (by the process that owns its UI) and falls back to it on a foreign
+  collision.
 
 ---
 

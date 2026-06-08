@@ -49,7 +49,8 @@ type Runner struct {
 	logFile     *os.File
 
 	app           *appProcess
-	appPID        uint32
+	appPID        uint32 // PID of the process we launched (may be a launcher/shim)
+	uiPID         uint32 // PID that actually owns the app's UI window(s), once known
 	currentWindow platform.Window
 	inputWatcher  platform.InputWatcher
 	topmostForced map[uintptr]forcedWindow // windows we forced topmost, keyed by handle
@@ -166,6 +167,9 @@ func (r *Runner) Run(ctx context.Context) (*result.Results, int) {
 			}()
 		}
 	}
+
+	// One-time session bootstrap, after the app is ready and before any case.
+	r.runSessionHook(ctx, "session", "setup", r.sess.Session.Setup)
 
 	aborted := false
 	for i := range cases {

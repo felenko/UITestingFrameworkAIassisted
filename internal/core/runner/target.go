@@ -11,6 +11,16 @@ import (
 	"github.com/felenko/uitest/internal/core/session"
 )
 
+// queryPID returns the PID used to disambiguate window matches. Many real apps
+// launch through a shim/launcher whose own PID owns no window, so once a real
+// app window has been bound we prefer its owning process for all later matching.
+func (r *Runner) queryPID() uint32 {
+	if r.uiPID != 0 {
+		return r.uiPID
+	}
+	return r.appPID
+}
+
 // windowQuery builds a platform query from a target + session default strategy.
 func (r *Runner) windowQuery(t *session.Target) platform.WindowQuery {
 	strategy := r.sess.Session.Settings.WindowMatch
@@ -19,7 +29,7 @@ func (r *Runner) windowQuery(t *session.Target) platform.WindowQuery {
 		Process:  r.bag.Expand(t.Process),
 		Class:    r.bag.Expand(t.Class),
 		Strategy: strategy,
-		PID:      r.appPID,
+		PID:      r.queryPID(),
 	}
 	// If the target explicitly names process/class, prefer that strategy.
 	switch {
@@ -43,12 +53,29 @@ func (r *Runner) findWindow(t *session.Target) (platform.Window, error) {
 		}
 		return nil, fmt.Errorf("no window specified and no current window")
 	}
+	pid := r.queryPID()
 	w, err := r.drv.FindWindow(r.windowQuery(t))
 	if err == nil {
+		// Reject a match owned by a foreign process (a title/class collision,
+		// e.g. a File Explorer window whose title merely contains the app name).
+		// When the target is `exact`, never fall back so the caller no-ops; else
+		// prefer the app's own primary window.
+		if pid != 0 && r.drv.WindowPID(w) != pid {
+			if t.Exact {
+				return nil, fmt.Errorf("window %s matched only a foreign process", t.Describe())
+			}
+			if aw, aerr := r.drv.FindWindowByPID(pid); aerr == nil {
+				r.logf("warn", "window %s matched a foreign process; using app window %q", t.Describe(), aw.Title())
+				return aw, nil
+			}
+		}
 		return w, nil
 	}
-	if r.appPID != 0 {
-		if aw, aerr := r.drv.FindWindowByPID(r.appPID); aerr == nil {
+	if t.Exact {
+		return nil, err
+	}
+	if pid != 0 {
+		if aw, aerr := r.drv.FindWindowByPID(pid); aerr == nil {
 			r.logf("warn", "window %s not found; using app window %q", t.Describe(), aw.Title())
 			return aw, nil
 		}
@@ -162,6 +189,60 @@ func (r *Runner) savePNG(img image.Image, name string) (string, error) {
 		rel = filepath.Join("screenshots", name)
 	}
 	return filepath.ToSlash(rel), nil
+}
+
+// ensureInputTarget binds and activates the window input should go to before a
+// click or keystroke. Unlike focusGuard (user-intervention detection), this
+// always runs so the runner never types into the wrong HWND when a modal dialog
+// or an explicit target window is in play.
+func (r *Runner) ensureInputTarget(cmd *session.Command) error {
+	if !needsForeground(cmd.Action) {
+		return nil
+	}
+	// Command names a window: bind and foreground it.
+	if cmd.Target != nil && (cmd.Target.Window != "" || cmd.Target.Process != "" || cmd.Target.Class != "") {
+		w, err := r.findWindow(cmd.Target)
+		if err != nil {
+			return fmt.Errorf("input target window: %w", err)
+		}
+		r.currentWindow = w
+		if err := r.drv.FocusWindow(w); err != nil {
+			return fmt.Errorf("could not activate input target window: %w", err)
+		}
+		r.ensureTopmost()
+		return nil
+	}
+	// Prefer the app's current foreground window (e.g. an error message box).
+	if pid := r.queryPID(); pid != 0 {
+		if fg, err := r.drv.ForegroundWindow(); err == nil && r.drv.WindowPID(fg) == pid {
+			r.currentWindow = fg
+			if !r.drv.ForegroundActive(fg) {
+				if err := r.drv.FocusWindow(fg); err != nil {
+					return fmt.Errorf("could not activate foreground app window: %w", err)
+				}
+			}
+			r.ensureTopmost()
+			return nil
+		}
+	}
+	// Fall back to the bound window or the app's primary window.
+	if r.currentWindow != nil {
+		if err := r.ensureForeground(); err != nil {
+			return err
+		}
+		r.ensureTopmost()
+		return nil
+	}
+	if pid := r.queryPID(); pid != 0 {
+		if w, err := r.drv.FindWindowByPID(pid); err == nil {
+			r.currentWindow = w
+			if err := r.drv.FocusWindow(w); err != nil {
+				return fmt.Errorf("could not activate app window: %w", err)
+			}
+			r.ensureTopmost()
+		}
+	}
+	return nil
 }
 
 // captureAndSave captures a target and writes it under the given file name.

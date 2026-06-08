@@ -68,7 +68,8 @@ type Driver interface {
 	FindWindow(q WindowQuery) (Window, error)
 	FindWindowByPID(pid uint32) (Window, error) // largest visible window for a process
 	FocusWindow(w Window) error
-	ForegroundActive(w Window) bool  // true if w is the current foreground window
+	ForegroundWindow() (Window, error) // the HWND that currently has keyboard focus
+	ForegroundActive(w Window) bool    // true if w is the current foreground window
 	IsTopmost(w Window) bool         // true if w has the WS_EX_TOPMOST style
 	SetTopmost(w Window, on bool) error // pin/unpin w above non-topmost windows
 	CloseWindow(w Window) error

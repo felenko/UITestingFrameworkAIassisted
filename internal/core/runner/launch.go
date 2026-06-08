@@ -71,6 +71,7 @@ func (r *Runner) waitForReady(ctx context.Context, app session.Application) erro
 			q := r.readyWindowQuery(rw.Window)
 			if w, err := r.drv.FindWindow(q); err == nil {
 				r.currentWindow = w
+				r.uiPID = r.drv.WindowPID(w)
 				r.logf("info", "app ready: window %q found", w.Title())
 				r.ensureTopmost()
 				return nil
@@ -96,6 +97,7 @@ func (r *Runner) attachMainWindow() {
 	if rw != nil && rw.Window != nil {
 		if w, err := r.drv.FindWindow(r.readyWindowQuery(rw.Window)); err == nil {
 			r.currentWindow = w
+			r.uiPID = r.drv.WindowPID(w)
 			r.ensureTopmost()
 		}
 	}
@@ -108,7 +110,7 @@ func (r *Runner) readyWindowQuery(wm *session.WindowMatch) platform.WindowQuery 
 		Process:  r.bag.Expand(wm.Process),
 		Class:    r.bag.Expand(wm.Class),
 		Strategy: r.sess.Session.Settings.WindowMatch,
-		PID:      r.appPID,
+		PID:      r.queryPID(),
 	}
 	if wm.Process != "" {
 		q.Strategy = "process"
@@ -142,6 +144,55 @@ func (r *Runner) shutdownApp() {
 		}
 		r.killApp()
 	}
+}
+
+// forceKillApp terminates the app under test and clears runner window/process
+// state. Used for session recovery after a failed case so the next retry starts
+// from a clean launch with no leftover modals or stale HWND bindings.
+func (r *Runner) forceKillApp() {
+	r.restoreTopmost()
+	pids := make(map[uint32]struct{})
+	if r.app != nil && r.app.cmd.Process != nil {
+		pids[uint32(r.app.cmd.Process.Pid)] = struct{}{}
+	}
+	if r.appPID != 0 {
+		pids[r.appPID] = struct{}{}
+	}
+	if r.uiPID != 0 {
+		pids[r.uiPID] = struct{}{}
+	}
+	if r.currentWindow != nil {
+		if pid := r.drv.WindowPID(r.currentWindow); pid != 0 {
+			pids[pid] = struct{}{}
+		}
+	}
+	for pid := range pids {
+		r.logf("info", "force-killing app process (pid %d)", pid)
+		_ = exec.Command("taskkill", "/PID", strconv.Itoa(int(pid)), "/T", "/F").Run()
+	}
+	if r.app != nil && r.app.cmd.Process != nil {
+		_ = r.app.cmd.Process.Kill()
+		_, _ = r.app.cmd.Process.Wait()
+	}
+	r.app = nil
+	r.appPID = 0
+	r.uiPID = 0
+	r.currentWindow = nil
+	r.topmostForced = nil
+}
+
+// restartAndRecover kills the app, relaunches it, runs recoverSteps (strict),
+// then runs beforeEach (best-effort) so window geometry is pinned before retry.
+func (r *Runner) restartAndRecover(ctx context.Context, caseID string) error {
+	r.forceKillApp()
+	if err := r.launchApp(ctx); err != nil {
+		return fmt.Errorf("relaunch after case failure: %w", err)
+	}
+	if err := r.runRecoverSteps(ctx, caseID); err != nil {
+		return err
+	}
+	r.runSessionHook(ctx, caseID, "beforeEach", r.sess.Session.BeforeEach)
+	return nil
 }
 
 func (r *Runner) killApp() {

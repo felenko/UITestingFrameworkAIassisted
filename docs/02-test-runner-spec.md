@@ -62,13 +62,24 @@ Auxiliary subcommands:
    works. Fail with exit `2` if not.
 3. **Launch app** (unless `--no-app-launch`): start the configured process, then wait until the
    `readyWhen` condition is satisfied or `startupTimeout` elapses.
+   - Then run `session.setup` once (best-effort bootstrap; failures are logged, not fatal).
 4. **For each test case** (respecting `--filter` and order):
-   1. Run case-level `setup` steps.
-   2. Run each `step` in order — execute its `machine` command(s). This is the **act** phase.
-   3. Run the case `validation`: evaluate each entry in the `assert` list. This is the **check**
+   1. Run `session.beforeEach` (best-effort; never changes the verdict).
+   2. Run case-level `setup` steps.
+   3. Run each `step` in order — execute its `machine` command(s). This is the **act** phase.
+   4. Run the case `validation`: evaluate each entry in the `assert` list. This is the **check**
       phase that decides pass/fail.
-   4. Run case-level `teardown` steps **always**, even after failure.
-   5. Record the case result.
+   5. Run case-level `teardown` steps **always**, even after failure (legacy name).
+   6. Run case-level `cleanup` steps **always**, even after failure — dismiss modals,
+      close forms, reset navigation so the next case starts from a clean state.
+      The runner binds and activates the correct window before every click or keystroke
+      in these phases (independent of `focusGuard`).
+   7. Run `session.afterEach` (best-effort; never changes the verdict).
+   8. If the case failed and `settings.recoverOnCaseFailure` is `true` (and the runner
+      launched the app): **force-kill** the app, **relaunch**, run `session.recoverSteps`
+      (strict — e.g. log in again), run `session.beforeEach` (reposition/resize), then
+      **retry the case once**. The failure is recorded only if that retry also fails.
+   9. Record the case result.
 5. **Shut down** the app gracefully (configurable: close window, then kill if it lingers).
 6. **Report**: write `results.json` + `summary.txt`/`summary.md`, set exit code.
 

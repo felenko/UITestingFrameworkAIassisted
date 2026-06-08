@@ -119,11 +119,17 @@ func (s *Session) applyDefaults() {
 		set.DefaultActionRetries = DefaultActionRetries
 	}
 
+	normalizeSteps(s.Session.Setup)
+	normalizeSteps(s.Session.BeforeEach)
+	normalizeSteps(s.Session.AfterEach)
+	normalizeSteps(s.Session.RecoverSteps)
+
 	for i := range s.TestCases {
 		tc := &s.TestCases[i]
 		normalizeSteps(tc.Setup)
 		normalizeSteps(tc.Steps)
 		normalizeSteps(tc.Teardown)
+		normalizeSteps(tc.Cleanup)
 		for j := range tc.Validation.Assert {
 			normalizeCommand(&tc.Validation.Assert[j])
 		}

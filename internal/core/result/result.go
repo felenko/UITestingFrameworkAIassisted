@@ -62,13 +62,14 @@ type Case struct {
 	Steps       []Step     `json:"steps"`
 	Validation  Validation `json:"validation"`
 	Teardown    []Step     `json:"teardown,omitempty"`
+	Cleanup     []Step     `json:"cleanup,omitempty"`
 	Error       string     `json:"error,omitempty"`
 }
 
 // Step is one step result (act phase).
 type Step struct {
 	Index       int       `json:"index"`
-	Phase       string    `json:"phase"` // setup | steps | teardown
+	Phase       string    `json:"phase"` // setup | steps | teardown | cleanup
 	Human       string    `json:"human"`
 	Machine     []Machine `json:"machine"`
 	Screenshots []string  `json:"screenshots,omitempty"`

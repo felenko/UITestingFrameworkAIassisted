@@ -53,6 +53,11 @@ func (r *Runner) forceTopmost() bool {
 	return s != nil && *s
 }
 
+func (r *Runner) recoverOnCaseFailure() bool {
+	s := r.sess.Session.Settings.RecoverOnCaseFailure
+	return s != nil && *s
+}
+
 // forcedWindow remembers a window we pinned topmost and whether it was already
 // topmost before we touched it.
 type forcedWindow struct {
@@ -216,15 +221,20 @@ func (r *Runner) runCommand(ctx context.Context, cmd *session.Command, sr *resul
 		}
 		attempts++
 
-		// Layer 1: make the target foreground before sending input. If it can't
-		// be activated, never deliver input to the wrong window — retry/fail.
-		if guard {
+		// Layer 1: bind and activate the intended window before any click/type.
+		// Always on (independent of focusGuard) so input never goes to the wrong HWND.
+		if needsForeground(cmd.Action) {
+			if terr := r.ensureInputTarget(cmd); terr != nil {
+				lastErr = terr
+				r.logf("warn", "  input focus: %v", terr)
+				continue
+			}
+		} else if guard {
 			if ferr := r.ensureForeground(); ferr != nil {
 				lastErr = ferr
 				r.logf("warn", "  focus guard: %v", ferr)
 				continue
 			}
-			// Keep it above non-topmost windows so nothing occludes the target.
 			r.ensureTopmost()
 		}
 

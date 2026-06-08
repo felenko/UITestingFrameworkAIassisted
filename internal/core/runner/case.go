@@ -2,6 +2,7 @@ package runner
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/felenko/uitest/internal/core/event"
@@ -9,21 +10,47 @@ import (
 	"github.com/felenko/uitest/internal/core/session"
 )
 
-// runCase executes one test case (setup → steps → validation → teardown),
-// honoring case-level retries.
+// runCase executes one test case (setup → steps → validation → teardown → cleanup).
+// When session.settings.recoverOnCaseFailure is true, a failed case triggers
+// one kill → relaunch → recoverSteps → beforeEach cycle and a single retry
+// before the failure is recorded. Otherwise case-level retries apply.
 func (r *Runner) runCase(ctx context.Context, tc *session.TestCase) result.Case {
-	attempts := tc.Retries + 1
-	var cr result.Case
-	for attempt := 0; attempt < attempts; attempt++ {
-		if attempt > 0 {
-			r.logf("warn", "retrying case %s (attempt %d/%d)", tc.ID, attempt+1, attempts)
+	cr := r.runCaseOnce(ctx, tc)
+	if cr.Status == result.StatusPassed {
+		return cr
+	}
+	if r.recoverOnCaseFailure() && !r.opts.NoAppLaunch {
+		r.logf("warn", "case %s failed (%s) — kill → relaunch → recover → retry once", tc.ID, cr.Status)
+		if err := r.restartAndRecover(ctx, tc.ID); err != nil {
+			r.logf("error", "session recovery failed: %v", err)
+			return cr
 		}
+		return r.runCaseOnce(ctx, tc)
+	}
+	for attempt := 0; attempt < tc.Retries; attempt++ {
+		r.logf("warn", "retrying case %s (attempt %d/%d)", tc.ID, attempt+2, tc.Retries+1)
 		cr = r.runCaseOnce(ctx, tc)
 		if cr.Status == result.StatusPassed {
 			break
 		}
 	}
 	return cr
+}
+
+// runRecoverSteps executes session.recoverSteps strictly after a relaunch.
+// Failures abort recovery so the original case failure is kept.
+func (r *Runner) runRecoverSteps(ctx context.Context, caseID string) error {
+	steps := r.sess.Session.RecoverSteps
+	if len(steps) == 0 {
+		return nil
+	}
+	r.logf("info", "running session recoverSteps (%d step(s))", len(steps))
+	cr := &result.Case{Status: result.StatusPassed}
+	r.runPhase(ctx, caseID, "recover", steps, cr)
+	if cr.Status == result.StatusPassed {
+		return nil
+	}
+	return fmt.Errorf("recoverSteps finished with status %s", cr.Status)
 }
 
 func (r *Runner) runCaseOnce(ctx context.Context, tc *session.TestCase) result.Case {
@@ -39,6 +66,12 @@ func (r *Runner) runCaseOnce(ctx context.Context, tc *session.TestCase) result.C
 		Tags:        tc.Tags,
 		Status:      result.StatusPassed,
 	}
+
+	// Session-level bootstrap before every case (best-effort; never changes the
+	// verdict). Typically pins the main window's geometry so window-relative
+	// coordinates stay valid; no-ops cleanly when the target window is absent.
+	r.runSessionHook(ctx, tc.ID, "beforeEach", r.sess.Session.BeforeEach)
+	defer r.runSessionHook(ctx, tc.ID, "afterEach", r.sess.Session.AfterEach)
 
 	// Setup + act phases.
 	cr.Setup = r.runPhase(ctx, tc.ID, "setup", tc.Setup, &cr)
@@ -62,8 +95,9 @@ func (r *Runner) runCaseOnce(ctx context.Context, tc *session.TestCase) result.C
 		}
 	}
 
-	// Teardown always runs; its failures don't change the case verdict.
+	// Teardown and cleanup always run; their failures don't change the case verdict.
 	cr.Teardown = r.runPhase(ctx, tc.ID, "teardown", tc.Teardown, nil)
+	cr.Cleanup = r.runPhase(ctx, tc.ID, "cleanup", tc.Cleanup, nil)
 
 	cr.DurationMs = time.Since(start).Milliseconds()
 	r.bus.Publish(event.Event{
@@ -71,6 +105,31 @@ func (r *Runner) runCaseOnce(ctx context.Context, tc *session.TestCase) result.C
 	})
 	r.logf("info", "case %s finished: %s (%dms)", tc.ID, cr.Status, cr.DurationMs)
 	return cr
+}
+
+// runSessionHook executes session-level lifecycle steps (setup / beforeEach /
+// afterEach) on a BEST-EFFORT basis: every step is attempted and failures are
+// logged as warnings but never abort the hook or change any case verdict. These
+// steps bootstrap shared state (e.g. pinning the main window's geometry so
+// window-relative coordinates stay valid) and may legitimately no-op — for
+// example before login, when the main shell window does not exist yet.
+func (r *Runner) runSessionHook(ctx context.Context, caseID, name string, steps []session.Step) {
+	if len(steps) == 0 {
+		return
+	}
+	phase := "session-" + name
+	for i := range steps {
+		select {
+		case <-ctx.Done():
+			return
+		default:
+		}
+		sr := r.runStepOnce(ctx, caseID, phase, i, &steps[i])
+		if sr.Status == result.StatusFailed || sr.Status == result.StatusError {
+			r.logf("warn", "  %s step[%d] %q did not apply (best-effort): %s",
+				name, i, steps[i].Human, sr.Error)
+		}
+	}
 }
 
 // runPhase executes a list of steps. If cr is non-nil, a failed/errored step

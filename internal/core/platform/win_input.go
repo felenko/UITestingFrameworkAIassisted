@@ -4,15 +4,37 @@ package platform
 
 import (
 	"fmt"
+	"syscall"
 	"time"
 )
 
 func (d *winDriver) setCursor(p Point) error {
 	r, _, err := procSetCursorPos.Call(uintptr(int32(p.X)), uintptr(int32(p.Y)))
 	if r == 0 {
-		return errno("SetCursorPos", err)
+		// SetCursorPos returns 0 (failure) when the coordinate can't be reached —
+		// most often because it resolves OUTSIDE the visible virtual desktop
+		// (e.g. a window-relative point below/right of the screen). In that case
+		// GetLastError is frequently 0, which would render as the misleading
+		// "The operation completed successfully"; report the rejected point and
+		// the virtual-screen bounds so the cause is obvious.
+		if errno, ok := err.(syscall.Errno); ok && errno != 0 {
+			return fmt.Errorf("SetCursorPos(%d,%d): %w", p.X, p.Y, err)
+		}
+		vx, vy, vw, vh := virtualScreenRect()
+		return fmt.Errorf("SetCursorPos(%d,%d) rejected: point is outside the visible desktop [%d,%d %dx%d] (window-relative coordinate likely resolves off-screen)",
+			p.X, p.Y, vx, vy, vw, vh)
 	}
 	return nil
+}
+
+// virtualScreenRect returns the bounding rectangle of all monitors (the area
+// SetCursorPos accepts), in physical pixels.
+func virtualScreenRect() (x, y, w, h int) {
+	rx, _, _ := procGetSystemMetrics.Call(smXVirtualScreen)
+	ry, _, _ := procGetSystemMetrics.Call(smYVirtualScreen)
+	rw, _, _ := procGetSystemMetrics.Call(smCXVirtualScreen)
+	rh, _, _ := procGetSystemMetrics.Call(smCYVirtualScreen)
+	return int(int32(rx)), int(int32(ry)), int(int32(rw)), int(int32(rh))
 }
 
 func (d *winDriver) MouseMove(p Point) error { return d.setCursor(p) }

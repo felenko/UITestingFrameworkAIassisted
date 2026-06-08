@@ -57,6 +57,12 @@ func Validate(s *Session) error {
 		v.add("at least one testCase is required")
 	}
 
+	// Session-level lifecycle hooks (best-effort bootstrap steps).
+	v.checkSteps("session.setup", s.Session.Setup)
+	v.checkSteps("session.beforeEach", s.Session.BeforeEach)
+	v.checkSteps("session.afterEach", s.Session.AfterEach)
+	v.checkSteps("session.recoverSteps", s.Session.RecoverSteps)
+
 	seen := map[string]bool{}
 	for i := range s.TestCases {
 		tc := &s.TestCases[i]
@@ -82,6 +88,7 @@ func Validate(s *Session) error {
 		v.checkSteps(where+".setup", tc.Setup)
 		v.checkSteps(where+".steps", tc.Steps)
 		v.checkSteps(where+".teardown", tc.Teardown)
+		v.checkSteps(where+".cleanup", tc.Cleanup)
 		v.checkValidation(where, &tc.Validation)
 	}
 

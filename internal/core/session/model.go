@@ -26,6 +26,21 @@ type SessionInfo struct {
 	Application Application `yaml:"application"`
 	AI          AI          `yaml:"ai"`
 	Settings    Settings    `yaml:"settings"`
+
+	// Session-level lifecycle hooks (run outside any single test case). Setup
+	// runs once after the app is ready; BeforeEach/AfterEach wrap every test
+	// case. All are BEST-EFFORT: their step failures are logged but never change
+	// a case verdict — they exist to bootstrap shared state (e.g. pin the main
+	// window's geometry so window-relative coordinates stay valid) and may
+	// legitimately no-op (e.g. before login the main shell window doesn't exist).
+	Setup      []Step `yaml:"setup"`
+	BeforeEach []Step `yaml:"beforeEach"`
+	AfterEach  []Step `yaml:"afterEach"`
+
+	// RecoverSteps run after a kill-and-relaunch when recoverOnCaseFailure is on
+	// and a case failed. Restores session state the cases depend on (e.g. log in
+	// after a clean restart) before the failed case is retried once.
+	RecoverSteps []Step `yaml:"recoverSteps"`
 }
 
 // Application describes the program under test.
@@ -65,6 +80,7 @@ type Settings struct {
 	AIEscalation         *bool    `yaml:"aiEscalation"`         // AI diagnosis when cheap retries exhaust (default true)
 	FocusGuard           *bool    `yaml:"focusGuard"`           // activate target + detect user intervention before each input action (default true)
 	ForceTopmost         *bool    `yaml:"forceTopmost"`         // keep the bound window above non-topmost windows so it can't be occluded (default true)
+	RecoverOnCaseFailure *bool    `yaml:"recoverOnCaseFailure"` // on case fail: kill app, relaunch, recoverSteps+beforeEach, retry once (default false)
 }
 
 // TestCase is a named scenario: ordered steps plus a final validation.
@@ -80,7 +96,8 @@ type TestCase struct {
 	Setup      []Step     `yaml:"setup"`
 	Steps      []Step     `yaml:"steps"`
 	Validation Validation `yaml:"validation"`
-	Teardown   []Step     `yaml:"teardown"`
+	Teardown   []Step     `yaml:"teardown"` // legacy name; prefer cleanup
+	Cleanup    []Step     `yaml:"cleanup"`  // always runs after validation; restores state for the next case
 }
 
 // Step is the two-faced unit: a `human` intent plus one or more `machine`
