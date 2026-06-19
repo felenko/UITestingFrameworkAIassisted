@@ -29,7 +29,8 @@ type bitmapInfo struct {
 }
 
 func (d *winDriver) CaptureScreen() (image.Image, error) {
-	return d.CaptureBounds(virtualBounds())
+	// Primary monitor only — not the virtual desktop spanning all displays.
+	return d.CaptureBounds(d.ScreenBounds())
 }
 
 // CaptureBounds grabs a screen-absolute rectangle via GDI BitBlt + GetDIBits.

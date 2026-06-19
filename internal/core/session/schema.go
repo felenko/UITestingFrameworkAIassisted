@@ -215,10 +215,14 @@ func (Command) GetFieldDocString(field string) string {
 		"Question":       "assert_ai/read_text_ai: the question for the AI engine.",
 		"Expect":         "assert_ai: expected answer, yes or no.",
 		"Store":          "read_text_ai: variable name to store the extracted text in.",
+		"State":          "assert_element: required control state — enabled|disabled|selected|checked|unchecked.",
+		"Equals":         "assert_element: the control's value (or name) must equal this exactly.",
+		"Contains":       "assert_element: the control's value (or name) must contain this substring.",
+		"Buttons":        "assert_dialog: button names the dialog must expose (e.g. [Yes, No] or [Save, Cancel]).",
 		"Provider":       "Override the AI provider for this command.",
 		"Timeout":        "Override the AI timeout for this command.",
 		"UIA":            "Locate the target control via UI Automation.",
-		"Find":           "Locate the target via AI element search (Phase 3).",
+		"Find":           "Locate the target by plain-English description: a cached locator resolves deterministically; otherwise the AI finds it on screen and the harvested UIA selector is cached for later runs (self-healing).",
 		"WaitBefore":     "Precondition: wait until the target is ready before acting.",
 		"Verify":         "Postcondition: confirm the action had its intended effect.",
 		"ActionRetries":  "How many times to re-attempt the action if Verify fails.",
@@ -329,6 +333,7 @@ func (Settings) GetFieldDocString(field string) string {
 		"AIEscalation":        "On exhausted retries, ask the AI to diagnose what is blocking (default true).",
 		"FocusGuard":          "Before each input action, make the bound window foreground and detect physical user input during it, re-asserting and retrying on interference (default true). Disable for modal-heavy flows that manage focus themselves.",
 		"ForceTopmost":         "Keep the bound window above non-topmost windows so nothing occludes it (default true).",
+		"ForcePrimaryDisplay":  "Move the app window onto the primary monitor when it launches or drifts to a secondary display, so window-relative coordinates and the primary-origin calibration stay valid (default true).",
 		"RecoverOnCaseFailure": "On case failure: force-kill the app, relaunch, run recoverSteps, run beforeEach, retry the case once (default false).",
 	}[field]
 }

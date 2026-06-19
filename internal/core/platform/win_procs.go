@@ -13,10 +13,15 @@ var (
 	shcore   = windows.NewLazySystemDLL("shcore.dll")
 
 	// Input.
-	procSendInput   = user32.NewProc("SendInput")
+	procSendInput    = user32.NewProc("SendInput")
 	procSetCursorPos = user32.NewProc("SetCursorPos")
 	procGetCursorPos = user32.NewProc("GetCursorPos")
 	procVkKeyScanW   = user32.NewProc("VkKeyScanW")
+
+	// Keyboard state / character mapping (used by the input recorder).
+	procGetKeyState      = user32.NewProc("GetKeyState")
+	procGetKeyboardState = user32.NewProc("GetKeyboardState")
+	procToUnicode        = user32.NewProc("ToUnicode")
 
 	// Low-level input hooks (user-intervention detection).
 	procSetWindowsHookExW   = user32.NewProc("SetWindowsHookExW")
@@ -136,7 +141,17 @@ const (
 	wmQuit        = 0x0012
 	wmMouseMove   = 0x0200
 	wmKeyDown     = 0x0100
+	wmKeyUp       = 0x0101
 	wmSysKeyDown  = 0x0104
+	wmSysKeyUp    = 0x0105
+
+	// Mouse button WM_ messages (for the input recorder).
+	wmLButtonDown   = 0x0201
+	wmLButtonDblClk = 0x0203
+	wmRButtonDown   = 0x0204
+	wmRButtonDblClk = 0x0206
+	wmMButtonDown   = 0x0207
+	wmMButtonDblClk = 0x0209
 
 	// SetProcessDpiAwarenessContext value: PER_MONITOR_AWARE_V2 = -4.
 	dpiAwarenessContextPerMonitorV2 = ^uintptr(3) // (HANDLE)-4

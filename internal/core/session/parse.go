@@ -109,6 +109,9 @@ func (s *Session) applyDefaults() {
 	if set.ForceTopmost == nil {
 		set.ForceTopmost = boolPtr(true)
 	}
+	if set.ForcePrimaryDisplay == nil {
+		set.ForcePrimaryDisplay = boolPtr(true)
+	}
 	if set.SettleTimeout.Duration == 0 {
 		set.SettleTimeout = D(DefaultSettleTimeout)
 	}

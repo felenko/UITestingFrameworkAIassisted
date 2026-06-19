@@ -9,15 +9,47 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"runtime/debug"
 	"time"
 
 	"github.com/felenko/uitest/internal/core/ai"
 	"github.com/felenko/uitest/internal/core/event"
+	"github.com/felenko/uitest/internal/core/locator"
 	"github.com/felenko/uitest/internal/core/platform"
 	"github.com/felenko/uitest/internal/core/result"
 	"github.com/felenko/uitest/internal/core/session"
 	"github.com/felenko/uitest/internal/core/vars"
 )
+
+// StepVerdict controls what the runner does with a step when BeforeEachStep is set.
+type StepVerdict int
+
+const (
+	VerdictRun  StepVerdict = iota // execute the step normally
+	VerdictSkip                    // skip the step; counts as passed without running
+)
+
+// StepHookEvent is the payload delivered to BeforeEachStep before a step runs.
+type StepHookEvent struct {
+	CaseID    string
+	Phase     string
+	StepIndex int
+	Human     string
+	Machine   []session.Command // read-only view of the step's machine commands
+}
+
+// CommandHookEvent is the payload delivered to BeforeEachCommand before each
+// individual machine command within a step.
+type CommandHookEvent struct {
+	CaseID    string
+	Phase     string
+	StepIndex int
+	CmdIndex  int             // 0-based index of this command within the step
+	TotalCmds int             // total number of commands in this step
+	Human     string          // parent step's human label
+	Cmd       session.Command // this command (value copy)
+	AllCmds   []session.Command
+}
 
 // Options configures a run (CLI flags / GUI settings resolve into these).
 type Options struct {
@@ -32,6 +64,24 @@ type Options struct {
 	NoAppLaunch   bool    // attach instead of launching
 	Frontend      string  // "cli" | "gui"
 	RunnerVersion string
+
+	// BeforeEachCase, if non-nil, is called between cases. Return a non-nil error to abort the run.
+	BeforeEachCase func(ctx context.Context) error
+
+	// AfterEachCase, if non-nil, is called after each case completes with a
+	// snapshot of results so far (cases completed so far, summary computed).
+	// Used by the GUI to flush a live report after each case.
+	AfterEachCase func(partial *result.Results)
+
+	// BeforeEachStep, if non-nil, is called before each step executes.
+	// The returned StepVerdict controls what the runner does with the step.
+	// It may block (step-level debugger pause).
+	BeforeEachStep func(ctx context.Context, ev StepHookEvent) StepVerdict
+
+	// BeforeEachCommand, if non-nil, is called before each individual machine
+	// command within every step. Return VerdictSkip to skip just this command;
+	// VerdictRun to execute it normally. It may block (command-level pause).
+	BeforeEachCommand func(ctx context.Context, ev CommandHookEvent) StepVerdict
 }
 
 // Runner executes one session.
@@ -58,6 +108,9 @@ type Runner struct {
 	provider      string
 	model         string
 	usedCandidate bool // any assert fell back to a candidate baseline
+
+	locators        *locator.Store // self-healing find: selectors (next to the session file)
+	unapprovedFinds int            // find: resolutions that used unapproved candidates
 }
 
 // New creates a runner. bus may be nil (a no-op bus is created).
@@ -101,14 +154,12 @@ func (r *Runner) logf(level, format string, args ...any) {
 
 // Run executes the session and returns the results plus a process exit code
 // (docs/02 §1 exit codes).
-func (r *Runner) Run(ctx context.Context) (*result.Results, int) {
+func (r *Runner) Run(ctx context.Context) (res *result.Results, code int) {
 	defer func() {
 		if r.logFile != nil {
 			r.logFile.Close()
 		}
 	}()
-
-	cases := r.selectCases()
 
 	results := &result.Results{
 		Session:       r.sess.Session.Name,
@@ -120,6 +171,20 @@ func (r *Runner) Run(ctx context.Context) (*result.Results, int) {
 		Application:   r.sess.Session.Application.Path,
 		StartedAt:     time.Now(),
 	}
+
+	// A panic anywhere in the run must still yield partial results and a
+	// run.finished event, so the front-end can write a report and the UI is
+	// not left hanging on a vanished run.
+	defer func() {
+		if rec := recover(); rec != nil {
+			r.logf("error", "run aborted by internal panic: %v\n%s", rec, debug.Stack())
+			results.FinishedAt = time.Now()
+			res = r.finishRun(results, exitFailed)
+			code = exitFailed
+		}
+	}()
+
+	cases := r.selectCases()
 
 	_ = r.drv.SetDPIAware()
 	r.bus.Publish(event.Event{Type: event.RunStarted, Session: r.sess.Session.Name, Total: len(cases)})
@@ -138,6 +203,7 @@ func (r *Runner) Run(ctx context.Context) (*result.Results, int) {
 	}
 	r.bag.Set("session.outDir", r.outDir)
 	r.bag.Set("timestamp", time.Now().Format("20060102-150405"))
+	r.loadLocators()
 
 	if r.opts.DryRun {
 		r.logf("info", "dry-run: %d case(s) would execute; not launching app", len(cases))
@@ -192,8 +258,22 @@ func (r *Runner) Run(ctx context.Context) (*result.Results, int) {
 		if aborted {
 			break
 		}
+		if r.opts.BeforeEachCase != nil {
+			if err := r.opts.BeforeEachCase(ctx); err != nil {
+				aborted = true
+				break
+			}
+		}
 		cr := r.runCase(ctx, &cases[i])
 		results.Cases = append(results.Cases, cr)
+		if r.opts.AfterEachCase != nil {
+			snap := *results
+			snap.Cases = make([]result.Case, len(results.Cases))
+			copy(snap.Cases, results.Cases)
+			snap.FinishedAt = time.Now()
+			r.computeSummary(&snap)
+			r.opts.AfterEachCase(&snap)
+		}
 		if cr.Status == result.StatusFailed || cr.Status == result.StatusError {
 			if r.failFast(&cases[i]) {
 				r.logf("warn", "failFast: stopping after %s", cr.ID)
@@ -202,7 +282,12 @@ func (r *Runner) Run(ctx context.Context) (*result.Results, int) {
 		}
 	}
 
-	r.shutdownApp()
+	if aborted {
+		r.logf("info", "run cancelled — leaving the application open")
+	} else {
+		r.shutdownApp()
+	}
+	r.finishLocators()
 
 	results.FinishedAt = time.Now()
 	if aborted {
@@ -217,8 +302,11 @@ func (r *Runner) Run(ctx context.Context) (*result.Results, int) {
 func (r *Runner) finishRun(results *result.Results, code int) *result.Results {
 	r.computeSummary(results)
 	status := "failed"
-	if code == exitOK {
+	switch code {
+	case exitOK:
 		status = string(overallStatus(results))
+	case exitAborted:
+		status = "cancelled"
 	}
 	r.bus.Publish(event.Event{
 		Type:    event.RunFinished,
@@ -275,6 +363,11 @@ func (r *Runner) setupOutput() error {
 
 // OutDir exposes the resolved output directory (set after setupOutput).
 func (r *Runner) OutDir() string { return r.outDir }
+
+// Driver returns the platform driver used by this runner. Callers (e.g. the
+// GUI debug controller) may call platform-level operations while the runner is
+// paused at a step without creating a separate driver instance.
+func (r *Runner) Driver() platform.Driver { return r.drv }
 
 func (r *Runner) computeSummary(res *result.Results) {
 	res.UnverifiedBaselines = r.usedCandidate

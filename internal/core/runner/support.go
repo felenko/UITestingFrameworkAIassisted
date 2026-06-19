@@ -64,6 +64,19 @@ func describeMachine(cmds []session.Command) string {
 	return strings.Join(parts, ", ")
 }
 
+// DescribeCommand returns a formatted single-line summary of one command.
+func DescribeCommand(c *session.Command) string { return describeCommand(c) }
+
+// DescribeMachineList returns one formatted line per command; used by the GUI
+// step inspector to populate the machine-commands list.
+func DescribeMachineList(cmds []session.Command) []string {
+	out := make([]string, 0, len(cmds))
+	for i := range cmds {
+		out = append(out, describeCommand(&cmds[i]))
+	}
+	return out
+}
+
 // describeCommand renders a one-line summary of a single command.
 func describeCommand(c *session.Command) string {
 	switch c.Action {
@@ -77,6 +90,8 @@ func describeCommand(c *session.Command) string {
 		return "key_press " + strings.Join(c.Keys, " then ")
 	case "focus_window", "close_window", "move_window", "resize_window":
 		return c.Action + " " + c.Target.Describe()
+	case "close_popup":
+		return "close_popup (all non-main app windows)"
 	case "wait":
 		if c.ForAI != nil {
 			return "wait forAI"

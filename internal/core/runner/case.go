@@ -3,6 +3,7 @@ package runner
 import (
 	"context"
 	"fmt"
+	"runtime/debug"
 	"time"
 
 	"github.com/felenko/uitest/internal/core/event"
@@ -19,7 +20,7 @@ func (r *Runner) runCase(ctx context.Context, tc *session.TestCase) result.Case 
 	if cr.Status == result.StatusPassed {
 		return cr
 	}
-	if r.recoverOnCaseFailure() && !r.opts.NoAppLaunch {
+	if r.recoverOnCaseFailure() && !r.opts.NoAppLaunch && ctx.Err() == nil {
 		r.logf("warn", "case %s failed (%s) — kill → relaunch → recover → retry once", tc.ID, cr.Status)
 		if err := r.restartAndRecover(ctx, tc.ID); err != nil {
 			r.logf("error", "session recovery failed: %v", err)
@@ -53,13 +54,31 @@ func (r *Runner) runRecoverSteps(ctx context.Context, caseID string) error {
 	return fmt.Errorf("recoverSteps finished with status %s", cr.Status)
 }
 
-func (r *Runner) runCaseOnce(ctx context.Context, tc *session.TestCase) result.Case {
+func (r *Runner) runCaseOnce(ctx context.Context, tc *session.TestCase) (cr result.Case) {
 	start := time.Now()
+
+	// A panic inside a case (driver, capture, AI client, …) is recorded as an
+	// errored case instead of crashing the whole runner, so the run continues
+	// and every prior result still reaches the report.
+	defer func() {
+		if rec := recover(); rec != nil {
+			r.logf("error", "case %s panicked: %v\n%s", tc.ID, rec, debug.Stack())
+			cr.ID = tc.ID
+			cr.Name = tc.Name
+			cr.Status = result.StatusError
+			cr.Error = fmt.Sprintf("internal error (panic): %v", rec)
+			cr.DurationMs = time.Since(start).Milliseconds()
+			r.bus.Publish(event.Event{
+				Type: event.CaseFinished, CaseID: tc.ID, Status: string(cr.Status), DurationMs: cr.DurationMs,
+			})
+		}
+	}()
+
 	r.bag.Set("case.id", tc.ID)
 	r.bus.Publish(event.Event{Type: event.CaseStarted, CaseID: tc.ID, CaseName: tc.Name})
 	r.logf("info", "case %s: %s", tc.ID, tc.Name)
 
-	cr := result.Case{
+	cr = result.Case{
 		ID:          tc.ID,
 		Name:        tc.Name,
 		Description: tc.Description,
@@ -160,6 +179,14 @@ func (r *Runner) runPhase(ctx context.Context, caseID, phase string, steps []ses
 // runStep executes one step's machine commands with step-level retries.
 func (r *Runner) runStep(ctx context.Context, caseID, phase string, index int, step *session.Step) result.Step {
 	r.bag.Set("step.index", itoa(index))
+
+	if r.opts.BeforeEachStep != nil {
+		ev := StepHookEvent{CaseID: caseID, Phase: phase, StepIndex: index, Human: step.Human, Machine: step.Machine}
+		if r.opts.BeforeEachStep(ctx, ev) == VerdictSkip {
+			return skippedStep(step, phase, index)
+		}
+	}
+
 	attempts := step.Retries + 1
 	var sr result.Step
 	for attempt := 0; attempt < attempts; attempt++ {
@@ -188,6 +215,23 @@ func (r *Runner) runStepOnce(ctx context.Context, caseID, phase string, index in
 
 	for i := range step.Machine {
 		cmd := &step.Machine[i]
+
+		if r.opts.BeforeEachCommand != nil {
+			ev := CommandHookEvent{
+				CaseID: caseID, Phase: phase, StepIndex: index,
+				CmdIndex: i, TotalCmds: len(step.Machine),
+				Human: step.Human, Cmd: *cmd, AllCmds: step.Machine,
+			}
+			if r.opts.BeforeEachCommand(ctx, ev) == VerdictSkip {
+				sr.Machine = append(sr.Machine, result.Machine{
+					Action:  cmd.Action,
+					Summary: describeCommand(cmd),
+					Status:  result.StatusSkipped,
+				})
+				continue
+			}
+		}
+
 		mStart := time.Now()
 		mr := result.Machine{Action: cmd.Action, Summary: describeCommand(cmd)}
 		attempts, diag, err := r.runCommand(ctx, cmd, &sr, caseID)

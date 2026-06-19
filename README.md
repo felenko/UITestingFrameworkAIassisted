@@ -49,6 +49,47 @@ Built in **Go** as **two front-ends over one shared Runner Core**:
 Every run produces a self-contained **`report.html`** that shows, for each assertion, **what
 should be** (expected) next to **what actually is** (actual) ([spec](docs/05-report-spec.md)).
 
+## Debug Mode (GUI runner)
+
+The GUI runner includes an **IDE-style debugger** that lets you step through a test case one command at a time, fix broken steps on the spot, and save the result back to the YAML — without leaving the runner.
+
+### Enabling debug mode
+
+Toggle the **🐞 Debug** button in the GUI before starting a run. In debug mode the runner pauses **before every individual machine command** instead of running steps end-to-end.
+
+### Command Inspector
+
+When paused, a panel slides up from the bottom showing the full command list for the current step, with an execution pointer (▶) on the command about to run — exactly like a breakpoint in a code debugger:
+
+```
+  ✓  focus_window "Visual Casino"
+  ✓  mouse_click  Nav_Alerts (UIA)
+▶    mouse_click  textBoxFirstName (UIA)  [New SIN Alert]
+  ○  type_text    "John"
+  ○  mouse_click  textBoxLastName (UIA)  [New SIN Alert]
+```
+
+Completed commands show ✓, the current command shows ▶, pending commands show ○.
+
+### Controls
+
+| Button | What it does |
+| --- | --- |
+| **▶ Run** | Execute the highlighted command and pause at the next one. |
+| **⏭ Skip** | Skip the highlighted command (mark it skipped in results) and advance. |
+| **⏺ Re-record Step** | Skip the remaining commands in the step, then start live-recording your interactions. Stop recording to replace the whole step's `machine:` block with the newly captured commands. |
+| **🗑 Delete Step** | Remove the entire step from the YAML file immediately. |
+
+The Command Inspector panel can be **dragged upward** to reveal more of the command list.
+
+### Re-recording captures window scope
+
+When recording a replacement step, the runner captures which top-level window each click lands in and automatically adds `target: {window: "..."}` next to every UIA-based command. This prevents the common bug where recorded UIA selectors resolve against the wrong window on replay.
+
+### Recording a new session from scratch
+
+The **📝 New Session** button on the picker page opens a form where you name the session, enter the application path, fill in the first case ID and name, then click **Start Recording**. Interact with your app normally, then **Stop & Save** — a save dialog appears and the runner writes a valid, schema-compliant `TestSession.yaml` ready for further editing.
+
 ## Technical details
 
 | Area | Choice |

@@ -14,9 +14,17 @@ var knownActions = map[string]bool{
 	"type_text": true, "key_press": true, "key_down": true, "key_up": true,
 	// app & window
 	"launch_app": true, "focus_window": true, "close_window": true,
-	"move_window": true, "resize_window": true, "wait": true,
+	"close_popup": true, "move_window": true, "resize_window": true, "wait": true,
 	// observation
 	"screenshot": true, "assert_ai": true, "read_text_ai": true,
+	// deterministic assertions (no AI)
+	"assert_window": true, "assert_element": true, "assert_dialog": true,
+}
+
+// elementStates are the accepted values for assert_element's `state` field.
+var elementStates = map[string]bool{
+	"enabled": true, "disabled": true, "selected": true,
+	"checked": true, "unchecked": true,
 }
 
 var knownProviders = map[string]bool{"claude": true, "codex": true, "cursor": true}
@@ -156,8 +164,11 @@ func (v *validator) checkCommand(where string, c *Command) {
 
 	switch c.Action {
 	case "mouse_move", "mouse_click", "mouse_down", "mouse_up", "mouse_scroll":
-		if !c.Target.IsPoint() {
-			v.add("%s: %s requires a point target { x, y }", where, c.Action)
+		// A uia: selector (Phase 2) or find: (Phase 3) resolves to a screen point
+		// at run time, so it stands in for an explicit { x, y } target.
+		hasResolver := (c.UIA != nil && !c.UIA.IsZero()) || c.Find != ""
+		if !hasResolver && !c.Target.IsPoint() {
+			v.add("%s: %s requires a point target { x, y } (or a uia:/find: selector)", where, c.Action)
 		}
 		if c.Action == "mouse_click" {
 			v.checkButton(where, c.Button)
@@ -208,6 +219,25 @@ func (v *validator) checkCommand(where string, c *Command) {
 		if strings.TrimSpace(c.Store) == "" {
 			v.add("%s: read_text_ai requires `store`", where)
 		}
+	case "assert_window":
+		if c.Target.IsZero() || (c.Target.Window == "" && c.Target.Process == "" && c.Target.Class == "") {
+			v.add("%s: assert_window requires a window target { window|process|class }", where)
+		}
+		v.checkExpect(where, c.Expect)
+	case "assert_element":
+		if c.UIA == nil || c.UIA.IsZero() {
+			v.add("%s: assert_element requires a `uia` selector { automationId|name|controlType }", where)
+		}
+		if c.State != "" && !elementStates[strings.ToLower(c.State)] {
+			v.add("%s: assert_element state %q must be enabled|disabled|selected|checked|unchecked", where, c.State)
+		}
+		v.checkExpect(where, c.Expect)
+	case "assert_dialog":
+		hasTitle := c.Target != nil && c.Target.Window != ""
+		if !hasTitle && len(c.Buttons) == 0 {
+			v.add("%s: assert_dialog requires a dialog title (target.window) and/or `buttons`", where)
+		}
+		v.checkExpect(where, c.Expect)
 	}
 }
 

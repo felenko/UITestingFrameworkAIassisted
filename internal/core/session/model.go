@@ -80,6 +80,7 @@ type Settings struct {
 	AIEscalation         *bool    `yaml:"aiEscalation"`         // AI diagnosis when cheap retries exhaust (default true)
 	FocusGuard           *bool    `yaml:"focusGuard"`           // activate target + detect user intervention before each input action (default true)
 	ForceTopmost         *bool    `yaml:"forceTopmost"`         // keep the bound window above non-topmost windows so it can't be occluded (default true)
+	ForcePrimaryDisplay  *bool    `yaml:"forcePrimaryDisplay"`  // pull the app window onto the primary monitor when it drifts to a secondary display (default true)
 	RecoverOnCaseFailure *bool    `yaml:"recoverOnCaseFailure"` // on case fail: kill app, relaunch, recoverSteps+beforeEach, retry once (default false)
 }
 
@@ -211,6 +212,13 @@ type Command struct {
 	Store    string `yaml:"store"`
 	Baseline string `yaml:"baseline"`
 
+	// Deterministic assertions (assert_window | assert_element | assert_dialog).
+	// These read the UI Automation tree / window list directly — no AI cost.
+	State    string     `yaml:"state"`    // assert_element: enabled|disabled|selected|checked|unchecked
+	Equals   string     `yaml:"equals"`   // assert_element: element value (or name) must equal this
+	Contains string     `yaml:"contains"` // assert_element: element value (or name) must contain this
+	Buttons  StringList `yaml:"buttons"`  // assert_dialog: the dialog must expose buttons with these names
+
 	// Identity / labelling (used mostly on assert entries).
 	ID    string `yaml:"id"`
 	Human string `yaml:"human"`
@@ -223,7 +231,7 @@ type Command struct {
 
 	// --- self-correcting actuation (cost-ordered escalation) ---
 	UIA           *UIAQuery  `yaml:"uia"`           // locate via UI Automation (Phase 2)
-	Find          string     `yaml:"find"`          // locate via AI element search (Phase 3)
+	Find          string     `yaml:"find"`          // locate by description: cached locator, else AI locate + harvest (Phase 3)
 	WaitBefore    *Condition `yaml:"waitBefore"`    // precondition: target ready before acting
 	Verify        *Condition `yaml:"verify"`        // postcondition: the action had its effect
 	ActionRetries *int       `yaml:"actionRetries"` // re-attempts of the action when Verify fails

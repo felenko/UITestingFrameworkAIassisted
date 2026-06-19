@@ -35,6 +35,8 @@ func main() {
 		os.Exit(cmdDoctor(args))
 	case "approve":
 		os.Exit(cmdApprove(args))
+	case "locators":
+		os.Exit(cmdLocators(args))
 	case "schema":
 		os.Exit(cmdSchema(args))
 	case "-h", "--help", "help":
@@ -56,6 +58,8 @@ Usage:
   uitest list <session.yaml>
   uitest doctor
   uitest approve <results-dir> [--case ID] [--assert ID] [--all] [--baselines DIR]
+  uitest locators <session.yaml> [--approve <find-text>] [--approve-all] [--rm <find-text>]
+                              Review/approve self-healing find: locators (default: list)
   uitest schema [-o <file>]   Emit the TestSession.yaml JSON Schema (for editors)
 
 Run options:

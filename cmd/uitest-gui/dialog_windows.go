@@ -10,8 +10,9 @@ import (
 )
 
 var (
-	comdlg32             = windows.NewLazySystemDLL("comdlg32.dll")
-	procGetOpenFileNameW = comdlg32.NewProc("GetOpenFileNameW")
+	comdlg32              = windows.NewLazySystemDLL("comdlg32.dll")
+	procGetOpenFileNameW  = comdlg32.NewProc("GetOpenFileNameW")
+	procGetSaveFileNameW  = comdlg32.NewProc("GetSaveFileNameW")
 )
 
 // openFilenameW mirrors Win32 OPENFILENAMEW.
@@ -72,6 +73,42 @@ func openFileDialog() (string, error) {
 	r, _, _ := procGetOpenFileNameW.Call(uintptr(unsafe.Pointer(&ofn)))
 	if r == 0 {
 		// User cancelled or error: return empty (not an error).
+		return "", nil
+	}
+	return syscall.UTF16ToString(buf), nil
+}
+
+// saveFileDialog shows a native "Save As" dialog filtered to YAML files.
+// defaultName pre-fills the filename field (base name only, e.g. "session.yaml").
+func saveFileDialog(defaultName string) (string, error) {
+	buf := make([]uint16, 4096)
+	if defaultName != "" {
+		dn := utf16FromString(defaultName)
+		copy(buf, dn)
+	}
+	filter := utf16z("Test sessions (*.yaml;*.yml)")
+	filter = append(filter, utf16z("*.yaml;*.yml")...)
+	filter = append(filter, utf16z("All files (*.*)")...)
+	filter = append(filter, utf16z("*.*")...)
+	filter = append(filter, 0) // double-null terminator
+
+	title, _ := syscall.UTF16PtrFromString("Save Test Session As")
+	defExt, _ := syscall.UTF16PtrFromString("yaml")
+
+	const ofnOverwritePrompt = 0x00000002
+	ofn := openFilenameW{
+		lStructSize:  uint32(unsafe.Sizeof(openFilenameW{})),
+		lpstrFilter:  &filter[0],
+		nFilterIndex: 1,
+		lpstrFile:    &buf[0],
+		nMaxFile:     uint32(len(buf)),
+		lpstrTitle:   title,
+		lpstrDefExt:  defExt,
+		flags:        ofnExplorer | ofnOverwritePrompt,
+	}
+
+	r, _, _ := procGetSaveFileNameW.Call(uintptr(unsafe.Pointer(&ofn)))
+	if r == 0 {
 		return "", nil
 	}
 	return syscall.UTF16ToString(buf), nil

@@ -130,6 +130,33 @@ func (r *Runner) executeCommand(ctx context.Context, cmd *session.Command, sr *r
 			return err
 		}
 		return r.drv.CloseWindow(w)
+	case "close_popup":
+		// Close every visible app window that is not r.currentWindow (the
+		// runner's tracked main window). Use-case: a child form (patron record,
+		// dialog) opened during a step needs to be closed in cleanup without
+		// knowing its title. Harmless if no popup is open.
+		pid := r.uiPID
+		if pid == 0 {
+			pid = r.appPID
+		}
+		if pid == 0 {
+			return nil
+		}
+		wins, err := r.drv.AppWindows(pid)
+		if err != nil {
+			return nil // best-effort
+		}
+		var mainHandle uintptr
+		if r.currentWindow != nil {
+			mainHandle = r.currentWindow.Handle()
+		}
+		for _, w := range wins {
+			if mainHandle != 0 && w.Handle() == mainHandle {
+				continue
+			}
+			_ = r.drv.CloseWindow(w)
+		}
+		return nil
 	case "move_window":
 		w, err := r.findWindow(cmd.Target)
 		if err != nil {
@@ -210,6 +237,22 @@ func (r *Runner) executeCommand(ctx context.Context, cmd *session.Command, sr *r
 		}
 		r.bag.Set(cmd.Store, value)
 		r.logf("info", "read_text_ai stored %s=%q", cmd.Store, value)
+		return nil
+
+	case "assert_window", "assert_element", "assert_dialog":
+		// Mid-scenario deterministic gate: fail the step if the check doesn't hold.
+		name := fmt.Sprintf("%s_step-%02d_assert.png", caseID, sr.Index)
+		if rel, err := r.captureAndSave(nil, name); err == nil {
+			sr.Screenshots = append(sr.Screenshots, rel)
+		}
+		verdict, question, observed, err := r.deterministicCheck(cmd)
+		if err != nil {
+			return err
+		}
+		want := normalizeExpect(cmd.Expect) != "no"
+		if verdict != want {
+			return fmt.Errorf("%s failed: %s — %s (expected %v)", cmd.Action, question, observed, want)
+		}
 		return nil
 
 	default:

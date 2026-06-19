@@ -39,6 +39,16 @@ func (stubDriver) KeyUp(string) error                   { return unsupported("Ke
 
 func (stubDriver) FindWindow(WindowQuery) (Window, error) { return nil, unsupported("FindWindow") }
 func (stubDriver) FindWindowByPID(uint32) (Window, error) { return nil, unsupported("FindWindowByPID") }
+func (stubDriver) FindElement(Window, UIAQuery) (Bounds, error) {
+	return Bounds{}, unsupported("FindElement")
+}
+func (stubDriver) ElementState(Window, UIAQuery) (UIAElement, error) {
+	return UIAElement{}, unsupported("ElementState")
+}
+func (stubDriver) ElementAtPoint(Point) (UIANode, error) {
+	return UIANode{}, unsupported("ElementAtPoint")
+}
+func (stubDriver) AppWindows(uint32) ([]Window, error) { return nil, unsupported("AppWindows") }
 func (stubDriver) FocusWindow(Window) error              { return unsupported("FocusWindow") }
 func (stubDriver) ForegroundWindow() (Window, error)     { return nil, unsupported("ForegroundWindow") }
 func (stubDriver) ForegroundActive(Window) bool          { return false }
@@ -47,6 +57,7 @@ func (stubDriver) SetTopmost(Window, bool) error         { return unsupported("S
 func (stubDriver) CloseWindow(Window) error              { return unsupported("CloseWindow") }
 func (stubDriver) MoveWindow(Window, int, int) error     { return unsupported("MoveWindow") }
 func (stubDriver) ResizeWindow(Window, int, int) error   { return unsupported("ResizeWindow") }
+func (stubDriver) EnsureOnPrimary(Window) (bool, error)  { return false, nil }
 func (stubDriver) WindowPID(Window) uint32               { return 0 }
 
 func (stubDriver) CaptureScreen() (image.Image, error)        { return nil, unsupported("CaptureScreen") }
@@ -59,4 +70,5 @@ type noopWatcher struct{}
 func (noopWatcher) UserEvents() uint64 { return 0 }
 func (noopWatcher) Stop()              {}
 
-func (stubDriver) WatchInput() (InputWatcher, error) { return noopWatcher{}, nil }
+func (stubDriver) WatchInput() (InputWatcher, error)  { return noopWatcher{}, nil }
+func (stubDriver) RecordInput() (InputRecorder, error) { return nil, unsupported("RecordInput") }

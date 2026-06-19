@@ -6,6 +6,7 @@ import (
 	"image/png"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/felenko/uitest/internal/core/platform"
 	"github.com/felenko/uitest/internal/core/session"
@@ -114,6 +115,65 @@ func (r *Runner) originFor(relativeTo string, raw bool) (platform.Point, error) 
 	return platform.Point{X: 0, Y: 0}, nil
 }
 
+// resolveUIATarget locates the command's `uia` element via UI Automation and
+// rewrites cmd.Target to its screen-absolute center point, so the standard
+// point-actuation path drives a real mouse click at the resolved control. The
+// hosting window is also bound so input is focused there. Unlike pixel
+// coordinates, this is immune to window position, DPI scaling, and layout or
+// accordion-expansion drift.
+func (r *Runner) resolveUIATarget(cmd *session.Command) error {
+	w, err := r.uiaWindow(cmd.Target)
+	if err != nil {
+		return fmt.Errorf("uia target window: %w", err)
+	}
+	q := platform.UIAQuery{
+		AutomationID: r.bag.Expand(cmd.UIA.AutomationID),
+		Name:         r.bag.Expand(cmd.UIA.Name),
+		ControlType:  cmd.UIA.ControlType,
+	}
+	b, err := r.drv.FindElement(w, q)
+	if err != nil {
+		return err
+	}
+	r.currentWindow = w
+	cx, cy := b.X+b.Width/2, b.Y+b.Height/2
+	cmd.Target = &session.Target{X: &cx, Y: &cy, RelativeTo: "screen"}
+	r.logf("info", "  uia %s -> point(%d,%d) in %q", describeUIA(q), cx, cy, w.Title())
+	return nil
+}
+
+// uiaWindow picks which window to search for a UIA element: an explicitly named
+// target window, else the currently bound window, else the app's primary window.
+func (r *Runner) uiaWindow(t *session.Target) (platform.Window, error) {
+	if t != nil && (t.Window != "" || t.Process != "" || t.Class != "") {
+		return r.findWindow(t)
+	}
+	if r.currentWindow != nil {
+		if _, err := r.currentWindow.Bounds(); err == nil {
+			return r.currentWindow, nil
+		}
+	}
+	if pid := r.queryPID(); pid != 0 {
+		return r.drv.FindWindowByPID(pid)
+	}
+	return nil, fmt.Errorf("no window available to resolve the UIA element")
+}
+
+// describeUIA renders a UIA query for logs.
+func describeUIA(q platform.UIAQuery) string {
+	var parts []string
+	if q.AutomationID != "" {
+		parts = append(parts, "automationId="+q.AutomationID)
+	}
+	if q.Name != "" {
+		parts = append(parts, "name="+q.Name)
+	}
+	if q.ControlType != "" {
+		parts = append(parts, "controlType="+q.ControlType)
+	}
+	return strings.Join(parts, " ")
+}
+
 // resolvePoint converts a point target to a screen-absolute coordinate.
 func (r *Runner) resolvePoint(t *session.Target) (platform.Point, error) {
 	if !t.IsPoint() {
@@ -206,6 +266,7 @@ func (r *Runner) ensureInputTarget(cmd *session.Command) error {
 			return fmt.Errorf("input target window: %w", err)
 		}
 		r.currentWindow = w
+		r.ensureOnPrimary()
 		if err := r.drv.FocusWindow(w); err != nil {
 			return fmt.Errorf("could not activate input target window: %w", err)
 		}
@@ -216,6 +277,7 @@ func (r *Runner) ensureInputTarget(cmd *session.Command) error {
 	if pid := r.queryPID(); pid != 0 {
 		if fg, err := r.drv.ForegroundWindow(); err == nil && r.drv.WindowPID(fg) == pid {
 			r.currentWindow = fg
+			r.ensureOnPrimary()
 			if !r.drv.ForegroundActive(fg) {
 				if err := r.drv.FocusWindow(fg); err != nil {
 					return fmt.Errorf("could not activate foreground app window: %w", err)
@@ -236,6 +298,7 @@ func (r *Runner) ensureInputTarget(cmd *session.Command) error {
 	if pid := r.queryPID(); pid != 0 {
 		if w, err := r.drv.FindWindowByPID(pid); err == nil {
 			r.currentWindow = w
+			r.ensureOnPrimary()
 			if err := r.drv.FocusWindow(w); err != nil {
 				return fmt.Errorf("could not activate app window: %w", err)
 			}

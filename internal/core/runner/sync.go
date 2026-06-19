@@ -53,6 +53,30 @@ func (r *Runner) forceTopmost() bool {
 	return s != nil && *s
 }
 
+func (r *Runner) forcePrimary() bool {
+	s := r.sess.Session.Settings.ForcePrimaryDisplay
+	return s != nil && *s
+}
+
+// ensureOnPrimary pulls the bound window back onto the primary monitor when the
+// app has launched on (or drifted to) a secondary display. Window-relative
+// coordinates and the primary-origin (0,0) calibration the sessions rely on
+// assume the app lives on the primary monitor, so a drifted window makes input
+// land on the wrong display. Idempotent; safe to call on every bind/activation.
+func (r *Runner) ensureOnPrimary() {
+	if !r.forcePrimary() || r.currentWindow == nil {
+		return
+	}
+	moved, err := r.drv.EnsureOnPrimary(r.currentWindow)
+	if err != nil {
+		r.logf("debug", "force primary: %v", err)
+		return
+	}
+	if moved {
+		r.logf("info", "moved %q onto the primary monitor", r.currentWindow.Title())
+	}
+}
+
 func (r *Runner) recoverOnCaseFailure() bool {
 	s := r.sess.Session.Settings.RecoverOnCaseFailure
 	return s != nil && *s
@@ -128,6 +152,7 @@ func (r *Runner) ensureForeground() error {
 	if r.currentWindow == nil {
 		return nil
 	}
+	r.ensureOnPrimary()
 	if r.drv.ForegroundActive(r.currentWindow) {
 		return nil
 	}
@@ -168,13 +193,31 @@ func (r *Runner) runCommand(ctx context.Context, cmd *session.Command, sr *resul
 	if !isActuation(cmd.Action) {
 		return 1, "", r.executeCommand(ctx, cmd, sr, caseID)
 	}
-	// Phase 1: cheaper locators only. UIA/find are accepted by the schema but
-	// not executable yet.
-	if cmd.UIA != nil && !cmd.UIA.IsZero() {
-		return 0, "", fmt.Errorf("uia targeting is not yet available (Phase 2)")
-	}
-	if cmd.Find != "" {
-		return 0, "", fmt.Errorf("find (AI element location) is not yet available (Phase 3)")
+	// Phase 2/3: resolve a UIA element (`uia:`) or an AI-located element
+	// (`find:`) to a concrete screen point so the rest of the closed loop
+	// (focus -> act -> verify) runs unchanged. The original target is restored
+	// on return so re-runs re-resolve from scratch. When both are present, the
+	// cheap deterministic `uia:` is tried first and `find:` is its self-healing
+	// fallback: the AI re-locates the element and the harvested selector is
+	// cached in the locator store for the next run.
+	if (cmd.UIA != nil && !cmd.UIA.IsZero()) || cmd.Find != "" {
+		restore := cmd.Target
+		defer func() { cmd.Target = restore }()
+		resolved := false
+		if cmd.UIA != nil && !cmd.UIA.IsZero() {
+			if err := r.resolveUIATarget(cmd); err == nil {
+				resolved = true
+			} else if cmd.Find == "" {
+				return 0, "", err
+			} else {
+				r.logf("warn", "  uia target failed (%v); healing via find %q", err, cmd.Find)
+			}
+		}
+		if !resolved {
+			if err := r.resolveFindTarget(ctx, cmd); err != nil {
+				return 0, "", err
+			}
+		}
 	}
 
 	settle := r.autoSettle()
@@ -356,7 +399,44 @@ func (r *Runner) pointRungs(ctx context.Context, cond *session.Condition, target
 		}
 	}
 	if cond.UIA != nil {
-		return false, fmt.Errorf("uia conditions are not yet available (Phase 2)")
+		w, werr := r.uiaWindow(condTarget(cond, target))
+		if werr != nil {
+			return false, nil // window not present yet; keep polling
+		}
+		q := platform.UIAQuery{
+			AutomationID: r.bag.Expand(cond.UIA.AutomationID),
+			Name:         r.bag.Expand(cond.UIA.Name),
+			ControlType:  cond.UIA.ControlType,
+		}
+		st, serr := r.drv.ElementState(w, q)
+		if serr != nil || !st.Found {
+			return false, nil // element absent; keep polling
+		}
+		if cond.UIA.State != "" {
+			switch strings.ToLower(cond.UIA.State) {
+			case "enabled":
+				if !st.Enabled {
+					return false, nil
+				}
+			case "disabled":
+				if st.Enabled {
+					return false, nil
+				}
+			case "selected":
+				if !st.Selected {
+					return false, nil
+				}
+			}
+		}
+		if cond.UIA.Value != "" {
+			val := st.Value
+			if val == "" {
+				val = st.Name
+			}
+			if val != r.bag.Expand(cond.UIA.Value) {
+				return false, nil
+			}
+		}
 	}
 	if cond.Changed && before != nil {
 		now, err := r.captureContext(condTarget(cond, target))

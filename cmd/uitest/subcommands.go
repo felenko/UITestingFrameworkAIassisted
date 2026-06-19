@@ -9,10 +9,91 @@ import (
 	"strings"
 
 	"github.com/felenko/uitest/internal/core/ai"
+	"github.com/felenko/uitest/internal/core/locator"
 	"github.com/felenko/uitest/internal/core/platform"
 	"github.com/felenko/uitest/internal/core/result"
 	"github.com/felenko/uitest/internal/core/session"
 )
+
+// cmdLocators reviews the self-healing find: locator store of a session
+// (docs/02 Phase 3). Listing is the default; --approve/--approve-all flip
+// harvested candidates to human-approved; --rm drops an entry so the next run
+// re-locates it via AI.
+func cmdLocators(args []string) int {
+	fs := newFlagSet("locators")
+	approve := fs.String("approve", "", "approve the entry with this find text")
+	approveAll := fs.Bool("approve-all", false, "approve every candidate entry")
+	rm := fs.String("rm", "", "remove the entry with this find text")
+
+	path, ok := parseWithPath(fs, args, "locators")
+	if !ok {
+		return 2
+	}
+	storePath := locator.PathFor(path)
+	store, err := locator.Load(storePath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		return 2
+	}
+
+	changed := false
+	switch {
+	case *approveAll:
+		n := store.ApproveAll()
+		fmt.Printf("approved %d candidate locator(s)\n", n)
+		changed = n > 0
+	case *approve != "":
+		if !store.Approve(*approve) {
+			fmt.Fprintf(os.Stderr, "error: no locator with find text %q\n", *approve)
+			return 2
+		}
+		fmt.Printf("approved %q\n", *approve)
+		changed = true
+	case *rm != "":
+		if !store.Remove(*rm) {
+			fmt.Fprintf(os.Stderr, "error: no locator with find text %q\n", *rm)
+			return 2
+		}
+		fmt.Printf("removed %q (the next run will re-locate it via AI)\n", *rm)
+		changed = true
+	}
+	if changed {
+		if err := store.Save(); err != nil {
+			fmt.Fprintf(os.Stderr, "error: saving %s: %v\n", storePath, err)
+			return 2
+		}
+	}
+
+	if len(store.Locators) == 0 {
+		fmt.Printf("no locators in %s\n", storePath)
+		return 0
+	}
+	fmt.Printf("Locators: %s\n\n", storePath)
+	candidates := 0
+	for _, e := range store.Locators {
+		mark := "✓ approved "
+		if !e.Approved {
+			mark = "? candidate"
+			candidates++
+		}
+		fmt.Printf("  %s  %q\n", mark, e.Find)
+		fmt.Printf("               uia: %s", e.UIA)
+		if e.Window != "" {
+			fmt.Printf("   window: %q", e.Window)
+		}
+		fmt.Println()
+		if !e.HarvestedAt.IsZero() {
+			fmt.Printf("               harvested %s by %s\n", e.HarvestedAt.Format("2006-01-02 15:04"), e.Provider)
+		}
+		if e.Note != "" {
+			fmt.Printf("               note: %s\n", e.Note)
+		}
+	}
+	if candidates > 0 {
+		fmt.Printf("\n%d candidate(s) awaiting review — verify each selector (e.g. uiaprobe), then:\n  uitest locators %s --approve \"<find-text>\"   (or --approve-all)\n", candidates, path)
+	}
+	return 0
+}
 
 // cmdValidate parses + schema-validates a session (docs/02 §1).
 func cmdValidate(args []string) int {

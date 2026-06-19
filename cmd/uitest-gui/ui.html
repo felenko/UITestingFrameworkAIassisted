@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <title>uitest</title>
 <style>
-:root{--bg:#0f1115;--panel:#181b22;--panel2:#1f232c;--border:#2a2f3a;--text:#e6e9ef;--muted:#9aa3b2;--pass:#2ecc71;--fail:#e74c3c;--error:#e67e22;--skip:#7f8c8d;--accent:#4a9eff;}
+:root{--bg:#0f1115;--panel:#181b22;--panel2:#1f232c;--border:#2a2f3a;--text:#e6e9ef;--muted:#9aa3b2;--pass:#2ecc71;--fail:#e74c3c;--error:#e67e22;--skip:#7f8c8d;--accent:#4a9eff;--debug:#c678dd;--rec:#e74c3c;}
 *{box-sizing:border-box}
 body{margin:0;font:14px/1.5 -apple-system,Segoe UI,Roboto,Arial,sans-serif;background:var(--bg);color:var(--text)}
 button{font:inherit;background:var(--accent);color:#06121f;border:0;border-radius:8px;padding:9px 16px;font-weight:600;cursor:pointer}
@@ -15,7 +15,7 @@ code{font-family:ui-monospace,Consolas,monospace;color:var(--muted)}
 .topbar{display:flex;align-items:center;gap:12px;padding:12px 20px;border-bottom:1px solid var(--border);background:var(--panel)}
 .topbar h1{font-size:16px;margin:0;flex:1}
 .logo{font-weight:800;color:var(--accent)}
-.wrap{padding:20px;max-width:1120px;margin:0 auto}
+.wrap{padding:20px;max-width:1200px;margin:0 auto}
 .card{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:18px;margin-bottom:16px}
 .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
 .muted{color:var(--muted)}
@@ -23,6 +23,7 @@ code{font-family:ui-monospace,Consolas,monospace;color:var(--muted)}
 .chip{font-size:11px;font-weight:700;padding:3px 9px;border-radius:999px;text-transform:uppercase}
 .chip.pending{background:rgba(127,140,141,.15);color:var(--skip)}
 .chip.running{background:rgba(74,158,255,.18);color:var(--accent)}
+.chip.paused{background:rgba(230,126,34,.18);color:var(--error)}
 .chip.passed{background:rgba(46,204,113,.15);color:var(--pass)}
 .chip.failed{background:rgba(231,76,60,.15);color:var(--fail)}
 .chip.error{background:rgba(230,126,34,.15);color:var(--error)}
@@ -51,7 +52,6 @@ code{font-family:ui-monospace,Consolas,monospace;color:var(--muted)}
 .count.passed b{color:var(--pass)}.count.failed b{color:var(--fail)}.count.errors b{color:var(--error)}
 .progress{height:8px;background:var(--panel2);border-radius:999px;overflow:hidden;margin:8px 0}
 .progress>div{height:100%;background:var(--accent);width:0;transition:width .3s}
-.grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
 .caselist .ci{display:flex;align-items:center;gap:10px;padding:8px 10px;border:1px solid var(--border);border-radius:8px;margin-bottom:6px}
 .caselist .ci .nm{flex:1}
 .shot img{width:100%;border:1px solid var(--border);border-radius:8px;background:#000}
@@ -61,8 +61,64 @@ code{font-family:ui-monospace,Consolas,monospace;color:var(--muted)}
 .cmp{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px}
 .cmp h5{margin:0 0 4px;font-size:10px;text-transform:uppercase;color:var(--muted)}
 .cmp img{width:100%;border:1px solid var(--border);border-radius:6px;background:#000}
-.log{font-family:ui-monospace,Consolas,monospace;font-size:12px;color:var(--muted);background:#0b0d11;border:1px solid var(--border);border-radius:8px;padding:10px;height:160px;overflow:auto;white-space:pre-wrap}
+.log{font-family:ui-monospace,Consolas,monospace;font-size:12px;color:var(--muted);background:#0b0d11;border:1px solid var(--border);border-radius:8px;padding:10px;height:220px;overflow:auto;white-space:pre-wrap}
 .active{font-size:13px}
+/* Mode toggle */
+.mode-toggle{display:flex;gap:4px;background:var(--panel2);border:1px solid var(--border);border-radius:10px;padding:3px}
+.mode-toggle button{border-radius:7px;padding:7px 14px;font-size:13px;border:0;background:transparent;color:var(--muted);font-weight:600;cursor:pointer}
+.mode-toggle button.active{background:var(--accent);color:#06121f}
+.mode-toggle button.active.debug-mode{background:var(--debug);color:#fff}
+/* Command Inspector (IDE-style debugger panel) */
+#step-inspector{position:fixed;bottom:0;left:0;right:0;z-index:100;background:var(--panel);border-top:2px solid var(--debug);padding:0;box-shadow:0 -4px 24px rgba(0,0,0,.5);transition:transform .2s;display:flex;flex-direction:column;height:var(--dbg-h,auto);overflow:hidden}
+#step-inspector.hidden{transform:translateY(100%)}
+#step-inspector h4{margin:0 0 4px;color:var(--debug);font-size:13px;text-transform:uppercase;letter-spacing:.08em}
+.si-resizer{height:6px;cursor:ns-resize;flex-shrink:0;background:var(--debug);opacity:.25;transition:opacity .15s}
+.si-resizer:hover{opacity:.7}
+body.si-dragging{cursor:ns-resize;user-select:none}
+body.si-dragging .si-resizer{opacity:.9}
+.si-body{padding:12px 24px 14px;overflow-y:auto;flex:1;min-height:0}
+.si-step-label{color:var(--muted);font-size:12px;margin-bottom:8px;font-style:italic}
+.ci-cmdlist{max-height:calc(max(60px,var(--dbg-h,290px) - 140px));overflow-y:auto;font-family:ui-monospace,Consolas,monospace;font-size:12px;margin-bottom:10px;border:1px solid var(--border);border-radius:8px}
+.ci-cmd{padding:4px 10px;display:flex;align-items:center;gap:8px;border-bottom:1px solid var(--border)}
+.ci-cmd:last-child{border-bottom:none}
+.ci-cmd.ci-done{color:var(--pass);opacity:.7}
+.ci-cmd.ci-curr{background:rgba(198,120,221,.12);color:var(--debug);font-weight:600}
+.ci-cmd.ci-pend{color:var(--muted)}
+.ci-dot{width:16px;text-align:center;flex-shrink:0;font-size:11px}
+.si-actions{display:flex;gap:8px;flex-wrap:wrap}
+.si-actions button{padding:8px 18px;font-size:13px}
+button.dbg-run{background:var(--pass);color:#06120a}
+button.dbg-skip{background:var(--panel2);color:var(--muted);border:1px solid var(--border)}
+button.dbg-rec{background:var(--rec);color:#fff}
+button.dbg-del{background:rgba(231,76,60,.15);color:var(--fail);border:1px solid var(--fail)}
+/* Recording panel */
+#recording-panel{position:fixed;bottom:0;left:0;right:0;z-index:101;background:var(--panel);border-top:2px solid var(--rec);padding:16px 24px;box-shadow:0 -4px 24px rgba(0,0,0,.5);transition:transform .2s}
+#recording-panel.hidden{transform:translateY(100%)}
+#recording-panel h4{margin:0 0 8px;color:var(--rec);font-size:13px;text-transform:uppercase;letter-spacing:.08em;display:flex;align-items:center;gap:8px}
+.rec-pulse{width:10px;height:10px;background:var(--rec);border-radius:50%;animation:pulse 1s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+#rec-list{max-height:120px;overflow-y:auto;margin-bottom:12px;font-family:ui-monospace,Consolas,monospace;font-size:12px}
+.rec-item{padding:3px 0;border-bottom:1px solid var(--border);color:var(--text)}
+.rec-item:last-child{border-bottom:none}
+.rec-actions{display:flex;gap:8px}
+/* New Session panel */
+#new-sess-panel{margin-top:14px}
+#new-sess-panel h3{margin:0 0 12px;font-size:15px}
+.ns-field{display:flex;flex-direction:column;gap:4px;margin-bottom:10px}
+.ns-field label{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
+.ns-field input,.ns-field select{width:100%}
+.ns-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:10px}
+/* Toast */
+#toast{position:fixed;top:16px;right:16px;z-index:200;background:var(--pass);color:#06120a;padding:10px 18px;border-radius:8px;font-weight:600;font-size:13px;transition:opacity .4s;opacity:0;pointer-events:none}
+#toast.show{opacity:1}
+/* Undo/redo */
+.undo-row{display:flex;gap:6px;margin-top:6px}
+/* AI provider warning */
+#ai-warn{display:none;background:rgba(230,126,34,.12);border:1px solid var(--error);border-radius:8px;padding:10px 14px;margin-top:8px;display:none;align-items:center;gap:10px;flex-wrap:wrap}
+#ai-warn.show{display:flex}
+#ai-warn .aw-msg{flex:1;color:var(--error);font-size:13px}
+#ai-warn select{padding:6px 10px}
+#ai-warn button{padding:6px 14px;font-size:12px}
 .banner{display:inline-block;font-weight:700;padding:6px 14px;border-radius:999px}
 .banner.pass{background:rgba(46,204,113,.15);color:var(--pass)}
 .banner.fail{background:rgba(231,76,60,.15);color:var(--fail)}
@@ -72,13 +128,26 @@ code{font-family:ui-monospace,Consolas,monospace;color:var(--muted)}
 .ov-cases{flex:1 1 auto;display:flex;flex-direction:column;min-height:0;margin-bottom:0}
 .ov-cases-head{flex:0 0 auto}
 .ov-cases .tree{flex:1 1 auto;min-height:0;overflow:auto;margin-top:4px}
+/* Live view: header pinned, body fills remaining space */
+.live-layout{display:flex;flex-direction:column;gap:16px;height:calc(100vh - 96px)}
+.live-header{flex:0 0 auto;margin-bottom:0}
+.live-body{flex:1 1 auto;min-height:0;display:grid;grid-template-columns:320px 1fr;gap:16px}
+.live-left{display:flex;flex-direction:column;gap:16px;min-height:0;overflow-y:auto}
+.live-left .card{margin-bottom:0}
+.caselist{max-height:200px;overflow-y:auto}
+.live-right{display:flex;flex-direction:column;gap:16px;min-height:0}
+.live-right .card{margin-bottom:0}
+.live-log-card{flex:0 0 auto}
+.live-feed-card{flex:1 1 auto;min-height:0;display:flex;flex-direction:column;overflow:hidden}
+#feed{flex:1 1 auto;min-height:0;overflow-y:auto}
 </style>
 </head>
 <body>
 <div class="topbar">
   <span class="logo">▣ uitest</span>
   <h1 id="title">UI Testing Framework</h1>
-  <button class="ghost" id="btnBack" onclick="showPicker()" style="display:none">← New session</button>
+  <button class="ghost" id="btnLive" onclick="show('live')" style="display:none">→ Live run</button>
+  <button class="ghost" id="btnBack" onclick="navBack()" style="display:none">← New session</button>
 </div>
 
 <div class="wrap">
@@ -92,8 +161,40 @@ code{font-family:ui-monospace,Consolas,monospace;color:var(--muted)}
         <button onclick="browse()">Browse…</button>
         <input id="pathInput" placeholder="…or paste a path to a .yaml" style="flex:1;min-width:280px">
         <button class="ghost" onclick="loadPath()">Load</button>
+        <button class="ghost" onclick="toggleNewSess()">📝 New Session</button>
       </div>
       <div id="loadErr" class="muted" style="margin-top:10px;color:var(--fail);white-space:pre-wrap"></div>
+      <!-- New session form -->
+      <div id="new-sess-panel" class="hidden">
+        <h3>📝 Create New Test Session</h3>
+        <div class="ns-field">
+          <label>Session name</label>
+          <input id="ns-name" placeholder="My App Smoke Tests">
+        </div>
+        <div class="ns-field">
+          <label>App path (exe to launch)</label>
+          <input id="ns-app" placeholder="C:\path\to\app.exe">
+        </div>
+        <div class="ns-grid">
+          <div class="ns-field">
+            <label>AI provider</label>
+            <select id="ns-provider"><option>claude</option><option>codex</option><option>cursor</option><option>openai</option></select>
+          </div>
+          <div class="ns-field">
+            <label>Case ID</label>
+            <input id="ns-caseid" placeholder="TC-001">
+          </div>
+          <div class="ns-field">
+            <label>Case name</label>
+            <input id="ns-casename" placeholder="Basic smoke test">
+          </div>
+        </div>
+        <div class="row">
+          <button onclick="newSessStartRec()">🔴 Start Recording</button>
+          <button class="ghost" onclick="toggleNewSess()">✕ Cancel</button>
+        </div>
+        <div id="ns-err" style="color:var(--fail);margin-top:8px;font-size:13px"></div>
+      </div>
     </div>
   </section>
 
@@ -112,14 +213,27 @@ code{font-family:ui-monospace,Consolas,monospace;color:var(--muted)}
       <h3 style="margin:10px 0 6px">Run settings</h3>
       <div class="row">
         <label>Provider <select id="optProvider"><option value="">(from session)</option><option>claude</option><option>codex</option><option>cursor</option></select></label>
+        <button class="ghost" id="btnSaveProvider" onclick="saveProvider()" title="Save provider to session YAML">💾 Save</button>
         <label>Filter <input id="optFilter" placeholder="glob: TC-* / tag" style="width:140px"></label>
         <label><input type="checkbox" id="optFailFast"> fail-fast</label>
         <label><input type="checkbox" id="optEmbed"> embed report</label>
       </div>
       <div class="row" style="margin-top:12px">
-        <button id="btnRunSel" onclick="run(true)">▶ Run</button>
-        <button class="ghost" onclick="run(false)">▶ Run all</button>
+        <div class="mode-toggle">
+          <button id="btnModeRun" class="active" onclick="setDebugMode(false)">▶ Run</button>
+          <button id="btnModeDebug" onclick="setDebugMode(true)">🐞 Debug</button>
+        </div>
+        <button id="btnRunSel" onclick="run(true)">Run selected</button>
+        <button class="ghost" onclick="run(false)">Run all</button>
         <button class="ghost" id="btnCancel" onclick="cancel()" disabled>■ Cancel</button>
+        <div class="undo-row hidden" id="undoRow">
+          <button class="ghost" id="btnUndo" onclick="doUndo()" disabled title="Undo last step patch">↩ Undo</button>
+          <button class="ghost" id="btnRedo" onclick="doRedo()" disabled title="Redo">↪ Redo</button>
+        </div>
+      </div>
+      <div id="ovRunBanner" class="row" style="display:none;margin-top:10px">
+        <span id="ovRunChip"></span>
+        <button class="ghost" id="btnOvResume" onclick="togglePause()" style="display:none;margin-left:8px">▶ Resume</button>
       </div>
     </div>
     <!-- Scrollable test cases below -->
@@ -129,8 +243,8 @@ code{font-family:ui-monospace,Consolas,monospace;color:var(--muted)}
           <input id="searchBox" placeholder="🔍 Search id, name, description, tag…" style="flex:1;min-width:240px" oninput="applySearch()">
           <button class="ghost" onclick="checkAll(true)">Check all</button>
           <button class="ghost" onclick="checkAll(false)">Uncheck all</button>
-        <button class="ghost" onclick="collapseAll(true)">Collapse all</button>
-        <button class="ghost" onclick="collapseAll(false)">Expand all</button>
+          <button class="ghost" onclick="collapseAll(true)">Collapse all</button>
+          <button class="ghost" onclick="collapseAll(false)">Expand all</button>
           <span class="muted" id="selCount"></span>
         </div>
       </div>
@@ -141,47 +255,104 @@ code{font-family:ui-monospace,Consolas,monospace;color:var(--muted)}
 
   <!-- LIVE -->
   <section id="live" class="hidden">
-    <div class="card">
-      <div class="row">
-        <button class="ghost" onclick="backToSession()">← Back to session</button>
-        <span id="liveBanner"></span>
-        <div style="flex:1"></div>
-        <button class="ghost" id="btnRerunFailed" onclick="rerunFailed()" disabled>↻ Re-run failed</button>
-        <button class="ghost" id="btnRerunAll" onclick="run(false)" disabled>↻ Re-run all</button>
-        <button class="ghost" id="btnReport" onclick="openReport()" disabled>Open report.html</button>
-        <button class="ghost" id="btnFolder" onclick="openFolder()" disabled>Open folder</button>
-        <button class="ghost" id="btnCancel2" onclick="cancel()" disabled>■ Cancel</button>
+    <div class="live-layout">
+      <div class="card live-header">
+        <div class="row">
+          <button class="ghost" onclick="backToSession()">← Back to session</button>
+          <span id="liveBanner"></span>
+          <div style="flex:1"></div>
+          <button class="ghost" id="btnPause" onclick="togglePause()" disabled>⏸ Pause</button>
+          <button class="ghost" id="btnRerunFailed" onclick="rerunFailed()" disabled>↻ Re-run failed</button>
+          <button class="ghost" id="btnRerunAll" onclick="run(false)" disabled>↻ Re-run all</button>
+          <button class="ghost" id="btnReport" onclick="doOpenReport()" disabled>Open report.html</button>
+          <button class="ghost" id="btnFolder" onclick="openFolder()" disabled>Open folder</button>
+          <button class="ghost" id="btnCancel2" onclick="cancel()" disabled>■ Cancel</button>
+        </div>
+        <div class="counts">
+          <div class="count"><b id="cTotal">0</b><small>total</small></div>
+          <div class="count passed"><b id="cPass">0</b><small>passed</small></div>
+          <div class="count failed"><b id="cFail">0</b><small>failed</small></div>
+          <div class="count errors"><b id="cErr">0</b><small>errors</small></div>
+        </div>
+        <div class="progress"><div id="bar"></div></div>
+        <div class="active"><span class="muted">Active:</span> <span id="activeStep">—</span></div>
+        <div id="ai-warn">
+          <span class="aw-msg" id="ai-warn-msg">⚠ AI provider appears unresponsive (repeated failures). Consider switching.</span>
+          <select id="ai-warn-prov">
+            <option value="">switch to…</option>
+            <option>claude</option><option>codex</option><option>cursor</option>
+          </select>
+          <button onclick="switchProviderFromWarn()">Apply &amp; continue</button>
+          <button class="ghost" onclick="dismissAIWarn()">✕</button>
+        </div>
       </div>
-      <div class="counts">
-        <div class="count"><b id="cTotal">0</b><small>total</small></div>
-        <div class="count passed"><b id="cPass">0</b><small>passed</small></div>
-        <div class="count failed"><b id="cFail">0</b><small>failed</small></div>
-        <div class="count errors"><b id="cErr">0</b><small>errors</small></div>
-      </div>
-      <div class="progress"><div id="bar"></div></div>
-      <div class="active"><span class="muted">Active:</span> <span id="activeStep">—</span></div>
-    </div>
-
-    <div class="grid">
-      <div>
-        <div class="card"><h3 style="margin-top:0">Cases</h3><div class="caselist" id="caseList"></div></div>
-        <div class="card shot"><h3 style="margin-top:0">Live screenshot</h3><img id="liveShot" alt="(waiting…)"></div>
-      </div>
-      <div>
-        <div class="card feed"><h3 style="margin-top:0">Assertions</h3><div id="feed"></div></div>
-        <div class="card"><h3 style="margin-top:0">Log</h3><div class="log" id="log"></div></div>
+      <div class="live-body">
+        <!-- Left: scrollable case list + live screenshot -->
+        <div class="live-left">
+          <div class="card"><h3 style="margin-top:0">Cases</h3><div class="caselist" id="caseList"></div></div>
+          <div class="card shot"><h3 style="margin-top:0">Live screenshot</h3><img id="liveShot" alt="(waiting…)"></div>
+        </div>
+        <!-- Right: log (top, fixed height) + assertions (below, scrollable) -->
+        <div class="live-right">
+          <div class="card live-log-card"><h3 style="margin-top:0">Log</h3><div class="log" id="log"></div></div>
+          <div class="card live-feed-card"><h3 style="margin-top:0">Assertions</h3><div id="feed"></div></div>
+        </div>
       </div>
     </div>
   </section>
 
 </div>
 
+<!-- Command Inspector (IDE-style debug mode, slides up from bottom) -->
+<div id="step-inspector" class="hidden">
+  <div class="si-resizer" onmousedown="onSiResizerDown(event)"></div>
+  <div class="si-body">
+    <h4>🐞 Command Inspector &nbsp;<span class="muted" id="si-header" style="font-size:11px;text-transform:none;letter-spacing:0;font-weight:400"></span></h4>
+    <div class="si-step-label" id="si-step-label"></div>
+    <div class="ci-cmdlist" id="ci-cmdlist"></div>
+    <div class="si-actions">
+      <button class="dbg-run" onclick="debugCmdVerdict('run')">▶ Run</button>
+      <button class="dbg-skip" onclick="debugCmdVerdict('skip')">⏭ Skip</button>
+      <button class="dbg-rec" onclick="debugCmdVerdict('replace')">⏺ Re-record Step</button>
+      <button class="dbg-del" onclick="debugDeleteStep()" title="Remove this step from the YAML">🗑 Delete Step</button>
+    </div>
+  </div>
+</div>
+
+<!-- Recording Panel (step re-record or new session, slides up from bottom) -->
+<div id="recording-panel" class="hidden">
+  <h4><span class="rec-pulse"></span> <span id="rec-title">REC</span> &nbsp;— Interact with the app. Clicks and keystrokes are captured.</h4>
+  <div id="rec-list"></div>
+  <div class="rec-actions">
+    <button class="dbg-run" onclick="recStopMain()">■ Stop &amp; Save</button>
+    <button class="dbg-skip" onclick="recDiscardMain()">✗ Discard</button>
+  </div>
+</div>
+
+<!-- Toast -->
+<div id="toast"></div>
+
 <script>
 let totalCases=0, done=0, pass=0, fail=0, err=0;
+let runActive=false, runPaused=false;
+let currentSection='picker';
+let debugMode=false;
+let aiErrCount=0;
+let recordingMode='step'; // 'step' (re-record) | 'new-session'
+let newSessData={};
 
-function show(id){for(const s of ['picker','overview','live'])document.getElementById(s).classList.toggle('hidden',s!==id);
-  document.getElementById('btnBack').style.display=(id==='picker')?'none':'inline-block';}
+function show(id){
+  currentSection=id;
+  for(const s of ['picker','overview','live'])document.getElementById(s).classList.toggle('hidden',s!==id);
+  const bb=document.getElementById('btnBack');
+  bb.style.display=(id==='picker')?'none':'inline-block';
+  bb.disabled=runActive;
+  bb.textContent=(id==='live'||runActive)?'← Session':'← New session';
+  document.getElementById('btnLive').style.display=(runActive&&id!=='live')?'inline-block':'none';
+  updateOvBanner();
+}
 function showPicker(){show('picker');}
+function navBack(){if(runActive||currentSection==='live'){show('overview');}else{show('picker');}}
 
 async function browse(){try{const p=await window.pickSession();if(p){document.getElementById('pathInput').value=p;loadPath();}}catch(e){}}
 function loadPath(){const p=document.getElementById('pathInput').value.trim();if(p)doLoad(p);}
@@ -200,6 +371,7 @@ async function invokeLoadSession(path){
 }
 async function doLoad(path){
   const errEl=document.getElementById('loadErr');errEl.textContent='';
+  if(runActive){errEl.textContent='Cannot load a new session while a run is active. Cancel the run first.';return;}
   caseStatus={}; // fresh session => clear prior pass/fail marks
   try{
     const s=await invokeLoadSession(path);
@@ -315,7 +487,7 @@ function collapseAll(on){
   });
   document.querySelectorAll('#ovTree .case').forEach(c=>{
     const t=c.querySelector('.cc-toggle');
-    if(!t||t.classList.contains('empty'))return; // case has no details to collapse
+    if(!t||t.classList.contains('empty'))return;
     c.classList.toggle('collapsed',on);
     t.textContent=on?'▸':'▾';
   });
@@ -339,18 +511,27 @@ let caseStatus={}; // id -> last run status, persisted across runs
 let runQueue=[];   // case ids in the current run, in session order
 let eventCursor=0;
 let pollTimer=null;
+let polling=false;
 
 function startEventPoll(){
   stopEventPoll();
   eventCursor=0;
+  polling=false;
   pollTimer=setInterval(async()=>{
+    // setInterval does not await the async body; without this guard a slow
+    // fetch lets the next tick fire with a stale cursor, re-reading the same
+    // events and double-counting. Skip while a poll is still in flight.
+    if(polling)return;
+    polling=true;
     try{
       const r=await fetch('/events?since='+eventCursor);
-      if(!r.ok)return;
-      const j=await r.json();
-      for(const e of (j.events||[]))window.uitestEvent(e);
-      if(typeof j.next==='number')eventCursor=j.next;
+      if(r.ok){
+        const j=await r.json();
+        for(const e of (j.events||[]))window.uitestEvent(e);
+        if(typeof j.next==='number')eventCursor=j.next;
+      }
     }catch(_){}
+    finally{polling=false;}
   },200);
 }
 function stopEventPoll(){
@@ -373,13 +554,16 @@ let runWatchdog=null;
 function startRunWith(cases){
   const runIds=(cases&&cases.length)?cases:[];
   if(!runIds.length){logline('select at least one case to run');return;}
-  show('live');
+  runActive=true; runPaused=false;
+  show('live'); // also calls updateOvBanner and disables btnBack
+  setPause(true);
   runQueue=runIds.slice();
   // Only the active case is "running"; the rest wait as "pending".
   runIds.forEach(id=>{caseStatus[id]='pending';setOverviewStatus(id,'pending');});
 
   totalCases=runIds.length;
-  done=pass=fail=err=0;
+  done=pass=fail=err=0;aiErrCount=0;
+  dismissAIWarn();
   for(const k of Object.keys(caseEls))delete caseEls[k];
   document.getElementById('caseList').innerHTML='';
   document.getElementById('feed').innerHTML='';
@@ -391,7 +575,8 @@ function startRunWith(cases){
   setCancel(true);
   startEventPoll();
   const opts={provider:document.getElementById('optProvider').value,filter:'',
-    failFast:document.getElementById('optFailFast').checked,embed:document.getElementById('optEmbed').checked,cases:runIds};
+    failFast:document.getElementById('optFailFast').checked,embed:document.getElementById('optEmbed').checked,
+    cases:runIds,debugMode:debugMode};
   if(runWatchdog)clearTimeout(runWatchdog);
   runWatchdog=setTimeout(()=>{
     if(done===0&&document.getElementById('liveBanner').innerHTML.includes('running'))
@@ -404,6 +589,9 @@ function startRunWith(cases){
     runIds.forEach(id=>{
       if(caseStatus[id]==='pending'){delete caseStatus[id];setOverviewStatus(id,'');}
     });
+    runActive=false; runPaused=false;
+    setPause(false);
+    document.getElementById('btnLive').style.display='none';
     setCancel(false);
     for(const b of ['btnRerunAll','btnRerunFailed'])document.getElementById(b).disabled=false;
   });
@@ -419,10 +607,50 @@ async function invokeStartRun(opts){
     throw e;
   }
 }
+
+// --- pause/resume -------------------------------------------------------
+async function invokePause(){
+  try{
+    const r=await fetch('/pause',{method:'POST'});
+    if(!r.ok)throw new Error('HTTP '+r.status);
+  }catch(e){
+    if(typeof window.pauseRun==='function')window.pauseRun().catch(()=>{});
+  }
+}
+async function invokeResume(){
+  try{
+    const r=await fetch('/resume',{method:'POST'});
+    if(!r.ok)throw new Error('HTTP '+r.status);
+  }catch(e){
+    if(typeof window.resumeRun==='function')window.resumeRun().catch(()=>{});
+  }
+}
+function togglePause(){
+  if(runPaused){
+    runPaused=false;
+    document.getElementById('btnPause').textContent='⏸ Pause';
+    document.getElementById('liveBanner').innerHTML='<span class="chip running">running</span>';
+    invokeResume();
+  }else{
+    runPaused=true;
+    document.getElementById('btnPause').textContent='▶ Resume';
+    document.getElementById('liveBanner').innerHTML='<span class="chip paused">paused</span>';
+    invokePause();
+  }
+  updateOvBanner();
+}
+function setPause(on){const b=document.getElementById('btnPause');if(b){b.disabled=!on;if(!on)b.textContent='⏸ Pause';}}
+
+// -----------------------------------------------------------------------
 window.uitestRunCrashed=function(){
   if(runWatchdog)clearTimeout(runWatchdog);
+  runActive=false; runPaused=false;
   document.getElementById('liveBanner').innerHTML='<span class="banner fail">● RUN CRASHED</span>';
+  document.getElementById('btnLive').style.display='none';
+  const bb=document.getElementById('btnBack');bb.disabled=false;bb.textContent='← New session';
+  setPause(false);
   setCancel(false);
+  updateOvBanner();
 };
 window.uitestRunFailed=function(msg){
   if(runWatchdog)clearTimeout(runWatchdog);
@@ -431,18 +659,26 @@ window.uitestRunFailed=function(msg){
   runQueue.forEach(id=>{
     if(caseStatus[id]==='pending'){delete caseStatus[id];setOverviewStatus(id,'');}
   });
+  runActive=false; runPaused=false;
+  document.getElementById('btnLive').style.display='none';
+  const bb2=document.getElementById('btnBack');bb2.disabled=false;bb2.textContent='← New session';
+  setPause(false);
   setCancel(false);
+  updateOvBanner();
   for(const b of ['btnRerunAll','btnRerunFailed'])document.getElementById(b).disabled=false;
 };
 function backToSession(){show('overview');}
 function setOverviewStatus(id,status){
   const span=document.querySelector('#ovTree .cstat[data-id="'+cssAttr(id)+'"]');
-  if(span)span.innerHTML=`<span class="chip ${status}">${status}</span> `;
+  if(span)span.innerHTML=status?`<span class="chip ${status}">${status}</span> `:'';
 }
 function cssAttr(s){return String(s).replace(/"/g,'\\"');}
 function cancel(){window.cancelRun();logline('cancel requested…');}
 function setCancel(on){for(const b of ['btnCancel','btnCancel2'])document.getElementById(b).disabled=!on;}
-function openReport(){window.openReport().catch(e=>logline('open report failed: '+e));}
+// NB: name this differently from the bound Go function `window.openReport` — a
+// JS `function openReport(){}` declaration would overwrite the binding with
+// itself and recurse infinitely (the button would silently do nothing).
+function doOpenReport(){window.openReport().catch(e=>logline('open report failed: '+e));}
 function openFolder(){window.openOutputDir().catch(e=>logline('open folder failed: '+e));}
 
 let caseEls={};
@@ -470,13 +706,34 @@ window.uitestEvent=function(e){
       setOverviewStatus(e.caseId,'running');
       break;
     case 'step.started':
-      document.getElementById('activeStep').textContent=`[${e.caseId}] ${e.human||''}`;break;
+      document.getElementById('activeStep').textContent=`[${e.caseId}] ${e.human||''}`;
+      break;
+    case 'step.paused':
+      // Legacy event — not emitted in command-level debug mode; kept for safety.
+      break;
+    case 'command.paused':
+      if(debugMode) showCommandInspector(e);
+      break;
+    case 'recording.began':
+      document.getElementById('rec-list').innerHTML='';
+      document.getElementById('rec-title').textContent=
+        recordingMode==='new-session'?'REC — NEW SESSION':'REC';
+      document.getElementById('recording-panel').classList.remove('hidden');
+      break;
+    case 'recording.update':{
+      const list=document.getElementById('rec-list');
+      const d=document.createElement('div');d.className='rec-item';
+      d.textContent=`${e.recordedCount}. ${e.recordedDesc||''}`;
+      list.appendChild(d);list.scrollTop=list.scrollHeight;
+      break;}
+    case 'recording.stopped':
+      // Panel hidden by recStop/recDiscard
+      break;
     case 'screenshot.captured':
       if(e.path)document.getElementById('liveShot').src='/art/'+e.path+'?t='+Date.now();break;
     case 'assert.finished':
       addAssert(e);break;
     case 'case.finished':
-      done++;if(e.status==='passed')pass++;else if(e.status==='failed')fail++;else if(e.status==='error')err++;
       caseStatus[e.caseId]=e.status;
       setCaseChip(e.caseId,e.status,e.durationMs);
       setOverviewStatus(e.caseId,e.status);
@@ -490,18 +747,25 @@ window.uitestEvent=function(e){
           setOverviewStatus(id,'skipped');
         }
       });
+      refreshCounts();
       finishRun(e.status);break;
     case 'log':
       if(e.level!=='debug'&&e.level!=='trace')logline('['+e.level+'] '+e.message);
-      if(e.level==='error'&&e.message&&(e.message.includes('environment check')||e.message.includes('failed to launch')||e.message.includes('preparing output')))
-        document.getElementById('liveBanner').innerHTML='<span class="banner fail">● '+esc(e.message)+'</span>';
+      if(e.level==='error'&&e.message){
+        if(e.message.includes('environment check')||e.message.includes('failed to launch')||e.message.includes('preparing output'))
+          document.getElementById('liveBanner').innerHTML='<span class="banner fail">● '+esc(e.message)+'</span>';
+        if(isAIError(e.message)){
+          aiErrCount++;
+          if(aiErrCount>=3) showAIWarn(e.message);
+        }
+      }
       break;
   }
 };
-window.uitestReport=function(reportPath,outDir){
+window.uitestReport=function(reportPath,outDir,live){
   document.getElementById('btnReport').disabled=false;
   document.getElementById('btnFolder').disabled=false;
-  logline('report: '+reportPath);
+  if(!live)logline('report: '+reportPath);
 };
 
 function addAssert(e){
@@ -515,7 +779,20 @@ function addAssert(e){
     </div>`;
   document.getElementById('feed').prepend(d);
 }
+// refreshCounts derives the tallies from the current run's per-case status
+// (last status wins), so it is idempotent — duplicate case.finished events
+// (poll overlap or case retries) and stale prior-run cases can't inflate it.
 function refreshCounts(){
+  let p=0,f=0,er=0,d=0;
+  for(const id of runQueue){
+    switch(caseStatus[id]){
+      case 'passed':  p++; d++; break;
+      case 'failed':  f++; d++; break;
+      case 'error':   er++; d++; break;
+      case 'skipped': d++; break;
+    }
+  }
+  pass=p;fail=f;err=er;done=d;
   document.getElementById('cPass').textContent=pass;
   document.getElementById('cFail').textContent=fail;
   document.getElementById('cErr').textContent=err;
@@ -523,9 +800,18 @@ function refreshCounts(){
 }
 function finishRun(status){
   stopEventPoll();
+  runActive=false; runPaused=false;
+  hideStepInspector();
+  setPause(false);
+  document.getElementById('btnLive').style.display='none';
+  const bb3=document.getElementById('btnBack');bb3.disabled=false;bb3.textContent='← New session';
   setCancel(false);
-  const ok=(status!=='failed');
-  document.getElementById('liveBanner').innerHTML=ok?'<span class="banner pass">● PASS</span>':'<span class="banner fail">● FAIL</span>';
+  updateOvBanner();
+  let banner;
+  if(status==='cancelled')banner='<span class="banner fail">● CANCELLED</span>';
+  else if(status==='failed')banner='<span class="banner fail">● FAIL</span>';
+  else banner='<span class="banner pass">● PASS</span>';
+  document.getElementById('liveBanner').innerHTML=banner;
   document.getElementById('btnRerunAll').disabled=false;
   const anyFailed=Object.values(caseStatus).some(s=>s==='failed'||s==='error');
   document.getElementById('btnRerunFailed').disabled=!anyFailed;
@@ -533,6 +819,272 @@ function finishRun(status){
 }
 function logline(s){const l=document.getElementById('log');l.textContent+=s+'\n';l.scrollTop=l.scrollHeight;}
 function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
+
+function updateOvBanner(){
+  const b=document.getElementById('ovRunBanner');if(!b)return;
+  const chip=document.getElementById('ovRunChip');
+  const rb=document.getElementById('btnOvResume');
+  if(!runActive){b.style.display='none';return;}
+  b.style.display='';
+  if(runPaused){chip.innerHTML='<span class="chip paused">⏸ paused</span>';rb.style.display='inline-block';}
+  else{chip.innerHTML='<span class="chip running">running</span>';rb.style.display='none';}
+}
+
+// --- AI provider failure detection ----------------------------------------
+function isAIError(msg){
+  if(!msg) return false;
+  return msg.includes('AI call timed out')||
+    msg.includes('invocation failed')||
+    msg.includes('forAI polling exhausted')||
+    (msg.includes('exit status')&&(msg.includes('claude')||msg.includes('codex')||msg.includes('cursor')));
+}
+function showAIWarn(msg){
+  const w=document.getElementById('ai-warn');
+  document.getElementById('ai-warn-msg').textContent=
+    `⚠ AI provider unresponsive after ${aiErrCount} failure(s): "${(msg||'').slice(0,80)}"`;
+  w.classList.add('show');
+}
+function dismissAIWarn(){document.getElementById('ai-warn').classList.remove('show');}
+async function switchProviderFromWarn(){
+  const p=document.getElementById('ai-warn-prov').value;
+  if(!p){logline('select a provider first');return;}
+  try{
+    const r=await fetch('/update-provider',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({provider:p})});
+    const j=await r.json().catch(()=>({}));
+    if(!r.ok||j.error)throw new Error(j.error||'HTTP '+r.status);
+    // Update the session panel selector too
+    const sel=document.getElementById('optProvider');
+    if(sel)sel.value=p;
+    showToast('Provider switched to '+p+' — next step will use it');
+    dismissAIWarn();
+    aiErrCount=0;
+    // Update the session overview badge
+    document.getElementById('ovProvider').textContent=p;
+  }catch(e){logline('switch provider failed: '+(e.message||e));}
+}
+
+// --- debug mode -----------------------------------------------------------
+function setDebugMode(on){
+  debugMode=on;
+  document.getElementById('btnModeRun').classList.toggle('active',!on);
+  document.getElementById('btnModeRun').classList.remove('debug-mode');
+  document.getElementById('btnModeDebug').classList.toggle('active',on);
+  document.getElementById('btnModeDebug').classList.toggle('debug-mode',on);
+  document.getElementById('undoRow').classList.toggle('hidden',!on);
+}
+
+function showToast(msg,ms=2500){
+  const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');
+  setTimeout(()=>t.classList.remove('show'),ms);
+}
+
+// Command Inspector (IDE-style debugger)
+function showCommandInspector(e){
+  document.getElementById('recording-panel').classList.add('hidden');
+  const si=document.getElementById('step-inspector');
+  si.classList.remove('hidden');
+  document.getElementById('si-header').textContent=
+    `${e.caseId||''} · ${e.phase||''} step ${e.stepIndex||0} · cmd ${(e.cmdIndex||0)+1}/${e.totalCmds||1}`;
+  document.getElementById('si-step-label').textContent=`"${e.human||''}"`;
+  const list=document.getElementById('ci-cmdlist');list.innerHTML='';
+  (e.machineCmds||[]).forEach((desc,i)=>{
+    const d=document.createElement('div');
+    if(i<e.cmdIndex){
+      d.className='ci-cmd ci-done';
+      d.innerHTML=`<span class="ci-dot">✓</span><span>${i+1}. ${esc(desc)}</span>`;
+    }else if(i===e.cmdIndex){
+      d.className='ci-cmd ci-curr';
+      d.innerHTML=`<span class="ci-dot">▶</span><span>${i+1}. ${esc(desc)}</span>`;
+    }else{
+      d.className='ci-cmd ci-pend';
+      d.innerHTML=`<span class="ci-dot">○</span><span>${i+1}. ${esc(desc)}</span>`;
+    }
+    list.appendChild(d);
+  });
+  const curr=list.querySelector('.ci-curr');
+  if(curr)curr.scrollIntoView({behavior:'smooth',block:'nearest'});
+  // Store context for delete/re-record
+  si.dataset.caseId=e.caseId||'';
+  si.dataset.stepIdx=String(e.stepIndex||0);
+}
+function hideStepInspector(){
+  document.getElementById('step-inspector').classList.add('hidden');
+  document.getElementById('recording-panel').classList.add('hidden');
+}
+
+// --- Debug panel drag-to-resize ---
+let _siDrag=null;
+function onSiResizerDown(e){
+  const si=document.getElementById('step-inspector');
+  _siDrag={y:e.clientY,h:si.offsetHeight};
+  document.body.classList.add('si-dragging');
+  e.preventDefault();
+}
+document.addEventListener('mousemove',e=>{
+  if(!_siDrag) return;
+  const h=Math.max(120,_siDrag.h+(_siDrag.y-e.clientY));
+  document.getElementById('step-inspector').style.setProperty('--dbg-h',h+'px');
+});
+document.addEventListener('mouseup',()=>{
+  if(_siDrag){_siDrag=null;document.body.classList.remove('si-dragging');}
+});
+
+async function debugCmdVerdict(action){
+  try{
+    const r=await fetch('/debug/verdict',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({action})});
+    const j=await r.json().catch(()=>({}));
+    if(!r.ok||j.error)throw new Error(j.error||'HTTP '+r.status);
+    if(action==='replace'){
+      // Recording panel shown when recording.began event arrives
+      document.getElementById('step-inspector').classList.add('hidden');
+      recordingMode='step';
+    }
+    // For run/skip: inspector stays; updates on next command.paused event
+  }catch(e){logline('debug cmd verdict error: '+e.message);}
+}
+
+async function debugDeleteStep(){
+  const si=document.getElementById('step-inspector');
+  const caseId=si.dataset.caseId;
+  const stepIdx=parseInt(si.dataset.stepIdx,10);
+  try{
+    const r=await fetch('/debug/delete-step',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({caseId,stepIdx})});
+    const j=await r.json().catch(()=>({}));
+    if(!r.ok||j.error)throw new Error(j.error||'HTTP '+r.status);
+    hideStepInspector();
+    showToast(`Step ${stepIdx} deleted from ${caseId}`);
+    updateUndoRedo(j);
+    // Step is deleted — send skip so runner moves on
+  }catch(e){logline('delete step error: '+e.message);}
+}
+
+// Unified stop/discard dispatchers — behaviour differs by recordingMode.
+async function recStopMain(){
+  if(recordingMode==='new-session') await newSessRecStop();
+  else await recStop();
+}
+async function recDiscardMain(){
+  if(recordingMode==='new-session') await newSessRecDiscard();
+  else await recDiscard();
+}
+
+async function recStop(){
+  try{
+    const r=await fetch('/debug/record/stop',{method:'POST'});
+    const j=await r.json().catch(()=>({}));
+    if(!r.ok||j.error)throw new Error(j.error||'HTTP '+r.status);
+    document.getElementById('recording-panel').classList.add('hidden');
+    updateUndoRedo(j);
+    showToast('Step saved to YAML');
+  }catch(e){logline('record stop error: '+e.message);}
+}
+async function recDiscard(){
+  try{
+    const r=await fetch('/debug/record/discard',{method:'POST'});
+    const j=await r.json().catch(()=>({}));
+    if(!r.ok||j.error)throw new Error(j.error||'HTTP '+r.status);
+    document.getElementById('recording-panel').classList.add('hidden');
+    logline('recording discarded');
+  }catch(e){logline('record discard error: '+e.message);}
+}
+
+// --- New Session recording ------------------------------------------------
+function toggleNewSess(){
+  const p=document.getElementById('new-sess-panel');
+  p.classList.toggle('hidden');
+  if(!p.classList.contains('hidden'))document.getElementById('ns-name').focus();
+}
+async function newSessStartRec(){
+  const name=document.getElementById('ns-name').value.trim();
+  const appPath=document.getElementById('ns-app').value.trim();
+  const provider=document.getElementById('ns-provider').value;
+  const caseID=document.getElementById('ns-caseid').value.trim();
+  const caseName=document.getElementById('ns-casename').value.trim();
+  const errEl=document.getElementById('ns-err');
+  errEl.textContent='';
+  if(!name||!caseID||!caseName){errEl.textContent='Session name, Case ID and Case name are required.';return;}
+  newSessData={name,appPath,provider,caseID,caseName};
+  try{
+    const r=await fetch('/new-session/start',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({name,appPath,provider,caseId:caseID,caseName})});
+    const j=await r.json().catch(()=>({}));
+    if(!r.ok||j.error)throw new Error(j.error||'HTTP '+r.status);
+    recordingMode='new-session';
+    document.getElementById('new-sess-panel').classList.add('hidden');
+    startEventPoll(); // start polling so recording.* events reach the UI
+  }catch(e){errEl.textContent='Error: '+e.message;}
+}
+async function newSessRecStop(){
+  // Ask user where to save the new session YAML.
+  let savePath='';
+  const safe=newSessData.name?(newSessData.name.replace(/[^a-zA-Z0-9_-]/g,'_')||'session'):'session';
+  try{
+    if(typeof window.savePath==='function')savePath=await window.savePath(safe+'.yaml');
+  }catch(_){}
+  if(!savePath){
+    // Fallback: prompt (desktop-only; in practice savePath is always bound)
+    savePath=prompt('Save session YAML to path:',safe+'.yaml')||'';
+  }
+  if(!savePath){logline('save cancelled');return;}
+  try{
+    const r=await fetch('/new-session/save',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({path:savePath})});
+    const j=await r.json().catch(()=>({}));
+    if(!r.ok||j.error)throw new Error(j.error||'HTTP '+r.status);
+    document.getElementById('recording-panel').classList.add('hidden');
+    stopEventPoll();
+    recordingMode='step';
+    showToast('Session saved — loading…');
+    setTimeout(()=>doLoad(j.path||savePath),400);
+  }catch(e){logline('save session error: '+e.message);}
+}
+async function newSessRecDiscard(){
+  try{
+    await fetch('/new-session/discard',{method:'POST'});
+  }catch(_){}
+  document.getElementById('recording-panel').classList.add('hidden');
+  stopEventPoll();
+  recordingMode='step';
+  logline('new session recording discarded');
+}
+
+async function doUndo(){
+  try{
+    const r=await fetch('/debug/undo',{method:'POST'});
+    const j=await r.json().catch(()=>({}));
+    if(!r.ok||j.error)throw new Error(j.error||'HTTP '+r.status);
+    showToast('Undone: '+j.undone);
+    updateUndoRedo(j);
+  }catch(e){logline('undo error: '+e.message);}
+}
+async function doRedo(){
+  try{
+    const r=await fetch('/debug/redo',{method:'POST'});
+    const j=await r.json().catch(()=>({}));
+    if(!r.ok||j.error)throw new Error(j.error||'HTTP '+r.status);
+    showToast('Redone: '+j.redone);
+    updateUndoRedo(j);
+  }catch(e){logline('redo error: '+e.message);}
+}
+function updateUndoRedo(j){
+  if(j==null)return;
+  document.getElementById('btnUndo').disabled=!j.canUndo;
+  document.getElementById('btnRedo').disabled=!j.canRedo;
+}
+
+async function saveProvider(){
+  const p=document.getElementById('optProvider').value;
+  if(!p){logline('select a provider to save (not "(from session)")');return;}
+  const btn=document.getElementById('btnSaveProvider');
+  try{
+    const r=await fetch('/update-provider',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({provider:p})});
+    const j=await r.json().catch(()=>({}));
+    if(!r.ok||j.error)throw new Error(j.error||('HTTP '+r.status));
+    const orig=btn.textContent;btn.textContent='✓ Saved';setTimeout(()=>{btn.textContent=orig;},2000);
+  }catch(e){logline('save provider failed: '+(e.message||e));}
+}
 
 (function bootSessionFromURL(){
   function boot(){

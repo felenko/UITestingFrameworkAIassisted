@@ -497,6 +497,41 @@ self-correcting (full semantics in [02 §3.5](02-test-runner-spec.md#35-synchron
     waitBefore: { window: { title: "Save As" } }   # wait for the dialog before typing
 ```
 
+### Element targeting: `uia` and `find`
+
+Mouse/keyboard commands can locate their target at run time instead of using a pixel point
+(full semantics in [02 §3.6](02-test-runner-spec.md#36-find--ai-element-location-with-self-healing-locators-phase-3)):
+
+```yaml
+# Deterministic: resolve a control via the UI Automation tree.
+- human: "Open the Search view"
+  machine:
+    action: mouse_click
+    target: { window: "MyApp" }
+    uia: { automationId: "Nav_Search" }      # automationId | name | controlType
+
+# By description: cached locator first; on a miss the AI locates it on screen,
+# and the harvested UIA selector is cached in <session>.locators.yaml so the
+# next run resolves deterministically (self-healing locators).
+- human: "Click the Save button"
+  machine:
+    action: mouse_click
+    target: { window: "MyApp" }
+    find: "the Save button in the toolbar"
+
+# Both: uia is tried first; find heals it if the selector ever goes stale.
+- human: "Click the Save button"
+  machine:
+    action: mouse_click
+    target: { window: "MyApp" }
+    uia: { name: "Save" }
+    find: "the Save button in the toolbar"
+```
+
+Harvested locators start as unapproved candidates; review them with
+`uitest locators <session.yaml>` (`--approve`, `--approve-all`, `--rm`). Commit the
+`.locators.yaml` next to the session so locator churn is visible in version control.
+
 ## 6. Targets (recap)
 
 | Form | Use | Example |

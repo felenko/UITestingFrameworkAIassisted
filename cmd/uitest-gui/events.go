@@ -48,8 +48,9 @@ func (b *eventBuffer) since(index int) ([]event.Event, int) {
 
 func (a *app) debugLog(msg string) {
 	line := fmt.Sprintf("%s %s\n", time.Now().Format(time.RFC3339), msg)
-	path := filepath.Join(os.TempDir(), "uitest-gui-run.log")
-	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+	dir := filepath.Join(os.Getenv("APPDATA"), "uitest")
+	_ = os.MkdirAll(dir, 0o755)
+	f, err := os.OpenFile(filepath.Join(dir, "gui-debug.log"), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
 	if err != nil {
 		return
 	}
@@ -118,4 +119,24 @@ func (a *app) handleEvents(w http.ResponseWriter, r *http.Request) {
 		"events": events,
 		"next":   next,
 	})
+}
+
+func (a *app) handlePause(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	_ = a.pauseRun()
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]bool{"ok": true})
+}
+
+func (a *app) handleResume(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	_ = a.resumeRun()
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]bool{"ok": true})
 }

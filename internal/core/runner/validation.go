@@ -44,9 +44,15 @@ func (r *Runner) runAssert(ctx context.Context, caseID string, a *session.Comman
 		Model:    r.model,
 	}
 
-	// Capture the actual screenshot.
+	// Capture the actual screenshot. Deterministic asserts capture the whole
+	// screen: it always succeeds (even when the asserted window is absent, e.g.
+	// expect:no) and shows any dialog that popped up, keeping visual evidence.
 	actualName := fmt.Sprintf("%s_%s_actual.png", caseID, assertID)
-	actualRel, capErr := r.captureAndSave(a.Target, actualName)
+	capTarget := a.Target
+	if isDeterministicAssert(a.Action) {
+		capTarget = nil
+	}
+	actualRel, capErr := r.captureAndSave(capTarget, actualName)
 	ar.Actual = result.Actual{Image: actualRel, CapturedAt: time.Now()}
 	r.bus.Publish(event.Event{Type: event.ScreenshotCaptured, CaseID: caseID, Path: actualRel, Which: "actual"})
 
@@ -61,6 +67,15 @@ func (r *Runner) runAssert(ctx context.Context, caseID string, a *session.Comman
 		ar.Status = result.StatusError
 		ar.Error = "capture failed: " + capErr.Error()
 		r.logf("error", "assert %s: %v", assertID, capErr)
+		r.publishAssert(caseID, &ar)
+		return ar
+	}
+
+	// Deterministic asserts: evaluate against the UIA tree / window list (no AI).
+	if isDeterministicAssert(a.Action) {
+		r.evalDeterministic(&ar, a)
+		r.logf("info", "  assert %s: %s (verdict=%v, expect=%s) [deterministic] %s",
+			assertID, ar.Status, ar.Verdict, ar.Expect, ar.RawAnswer)
 		r.publishAssert(caseID, &ar)
 		return ar
 	}

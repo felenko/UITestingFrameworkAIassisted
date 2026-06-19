@@ -73,6 +73,7 @@ func (r *Runner) waitForReady(ctx context.Context, app session.Application) erro
 				r.currentWindow = w
 				r.uiPID = r.drv.WindowPID(w)
 				r.logf("info", "app ready: window %q found", w.Title())
+				r.ensureOnPrimary()
 				r.ensureTopmost()
 				return nil
 			}
@@ -98,6 +99,7 @@ func (r *Runner) attachMainWindow() {
 		if w, err := r.drv.FindWindow(r.readyWindowQuery(rw.Window)); err == nil {
 			r.currentWindow = w
 			r.uiPID = r.drv.WindowPID(w)
+			r.ensureOnPrimary()
 			r.ensureTopmost()
 		}
 	}
@@ -184,6 +186,9 @@ func (r *Runner) forceKillApp() {
 // restartAndRecover kills the app, relaunches it, runs recoverSteps (strict),
 // then runs beforeEach (best-effort) so window geometry is pinned before retry.
 func (r *Runner) restartAndRecover(ctx context.Context, caseID string) error {
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
 	r.forceKillApp()
 	if err := r.launchApp(ctx); err != nil {
 		return fmt.Errorf("relaunch after case failure: %w", err)

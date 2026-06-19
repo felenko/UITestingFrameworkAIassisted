@@ -59,16 +59,6 @@ func (d *winDriver) ScreenBounds() Bounds {
 	return Bounds{X: 0, Y: 0, Width: metric(smCXScreen), Height: metric(smCYScreen)}
 }
 
-// virtualBounds spans all monitors (used for whole-screen capture).
-func virtualBounds() Bounds {
-	return Bounds{
-		X:      metric(smXVirtualScreen),
-		Y:      metric(smYVirtualScreen),
-		Width:  metric(smCXVirtualScreen),
-		Height: metric(smCYVirtualScreen),
-	}
-}
-
 // input mirrors Win32 INPUT (x64): a 4-byte type, 4-byte pad, then a 32-byte
 // union. [4]uint64 guarantees 8-byte alignment so the embedded uintptr in the
 // union lands correctly.

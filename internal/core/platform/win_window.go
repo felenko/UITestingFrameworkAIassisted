@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 	"unsafe"
@@ -90,22 +91,39 @@ type candidate struct {
 	title string
 }
 
+// Windows caps syscall.NewCallback registrations (~2000). enumWindows runs on
+// every FindWindow/FindWindowByPID call, so the callback must be created once.
+var (
+	enumWindowsCBOnce sync.Once
+	enumWindowsCB     uintptr
+	enumWindowsMu     sync.Mutex
+	enumWindowsBuf    []candidate
+)
+
+func enumWindowsProc(hwnd, _ uintptr) uintptr {
+	if vis, _, _ := procIsWindowVisible.Call(hwnd); vis == 0 {
+		return 1
+	}
+	title := getWindowText(hwnd)
+	if title == "" {
+		return 1
+	}
+	enumWindowsBuf = append(enumWindowsBuf, candidate{hwnd: hwnd, title: title})
+	return 1
+}
+
 // enumWindows returns all visible top-level windows that have a title.
 func enumWindows() []candidate {
-	var found []candidate
-	cb := syscall.NewCallback(func(hwnd uintptr, _ uintptr) uintptr {
-		if vis, _, _ := procIsWindowVisible.Call(hwnd); vis == 0 {
-			return 1
-		}
-		title := getWindowText(hwnd)
-		if title == "" {
-			return 1
-		}
-		found = append(found, candidate{hwnd: hwnd, title: title})
-		return 1
+	enumWindowsCBOnce.Do(func() {
+		enumWindowsCB = syscall.NewCallback(enumWindowsProc)
 	})
-	procEnumWindows.Call(cb, 0)
-	return found
+	enumWindowsMu.Lock()
+	defer enumWindowsMu.Unlock()
+	enumWindowsBuf = enumWindowsBuf[:0]
+	procEnumWindows.Call(enumWindowsCB, 0)
+	out := make([]candidate, len(enumWindowsBuf))
+	copy(out, enumWindowsBuf)
+	return out
 }
 
 func (d *winDriver) FindWindow(q WindowQuery) (Window, error) {
@@ -157,6 +175,10 @@ func (d *winDriver) FindWindow(q WindowQuery) (Window, error) {
 				return &winWindow{hwnd: c.hwnd, title: c.title}, nil
 			}
 		}
+		// Title matched but no window belongs to the requested process. Return
+		// an error so the caller can fall back to FindWindowByPID rather than
+		// receiving a stale match owned by a foreign process.
+		return nil, fmt.Errorf("no window matched %s for pid %d", describeQuery(q, strategy), q.PID)
 	}
 	return &winWindow{hwnd: matches[0].hwnd, title: matches[0].title}, nil
 }
@@ -186,6 +208,22 @@ func (d *winDriver) FindWindowByPID(pid uint32) (Window, error) {
 		return nil, fmt.Errorf("no visible window for pid %d", pid)
 	}
 	return &winWindow{hwnd: best.hwnd, title: best.title}, nil
+}
+
+// AppWindows returns every visible, titled top-level window owned by pid. Used
+// to detect dialogs (message boxes / modal forms are separate top-level windows
+// owned by the same process).
+func (d *winDriver) AppWindows(pid uint32) ([]Window, error) {
+	if pid == 0 {
+		return nil, fmt.Errorf("no process id")
+	}
+	var out []Window
+	for _, c := range enumWindows() {
+		if windowPID(c.hwnd) == pid {
+			out = append(out, &winWindow{hwnd: c.hwnd, title: c.title})
+		}
+	}
+	return out, nil
 }
 
 func matchTitle(title, want string, re *regexp.Regexp) bool {
@@ -341,6 +379,28 @@ func (d *winDriver) ResizeWindow(w Window, width, height int) error {
 		return errno("SetWindowPos(resize)", err)
 	}
 	return nil
+}
+
+// EnsureOnPrimary moves w onto the primary monitor when its center currently
+// lies off it (e.g. the app launched on a secondary display). The runner's
+// window-relative coordinates and its primary-origin (0,0) calibration assume
+// the app lives on the primary monitor, so a drifted window makes clicks land on
+// the wrong display. Returns true when a move was performed.
+func (d *winDriver) EnsureOnPrimary(w Window) (bool, error) {
+	b, err := w.Bounds()
+	if err != nil {
+		return false, err
+	}
+	prim := d.ScreenBounds() // primary monitor, origin (0,0)
+	cx, cy := b.X+b.Width/2, b.Y+b.Height/2
+	if cx >= prim.X && cx < prim.X+prim.Width && cy >= prim.Y && cy < prim.Y+prim.Height {
+		return false, nil // already on the primary monitor
+	}
+	// Anchor the window at the primary origin — the calibration reference point.
+	if err := d.MoveWindow(w, prim.X, prim.Y); err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 // unmaximize restores a maximized or minimized window to its normal state so

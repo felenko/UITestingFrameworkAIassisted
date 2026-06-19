@@ -18,6 +18,13 @@ const (
 	AssertFinished     Type = "assert.finished"
 	RunFinished        Type = "run.finished"
 	Log                Type = "log"
+
+	// Debug / recording events (GUI debug mode).
+	StepPaused       Type = "step.paused"      // step-level debugger waiting (legacy)
+	CommandPaused    Type = "command.paused"    // command-level debugger waiting
+	RecordingBegan   Type = "recording.began"   // input recording started
+	RecordingUpdate  Type = "recording.update"  // a new action was captured
+	RecordingStopped Type = "recording.stopped" // recording ended
 )
 
 // Event is a single progress message. Fields are populated as relevant to Type.
@@ -59,6 +66,16 @@ type Event struct {
 	// Log.
 	Level   string `json:"level,omitempty"`
 	Message string `json:"message,omitempty"`
+
+	// Debug mode (step.paused / command.paused / recording.*).
+	MachineCmds   []string `json:"machineCmds,omitempty"`   // per-command descriptions
+	RecordedDesc  string   `json:"recordedDesc,omitempty"`  // latest captured action description
+	RecordedCount int      `json:"recordedCount,omitempty"` // total captured so far
+
+	// Command-level debug fields (command.paused).
+	CmdIndex  int    `json:"cmdIndex,omitempty"`
+	TotalCmds int    `json:"totalCmds,omitempty"`
+	CmdDesc   string `json:"cmdDesc,omitempty"`
 }
 
 // Handler receives events.
