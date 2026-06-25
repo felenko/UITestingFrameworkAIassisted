@@ -51,7 +51,7 @@ should be** (expected) next to **what actually is** (actual) ([spec](docs/05-rep
 
 ## Debug Mode (GUI runner)
 
-The GUI runner includes an **IDE-style debugger** that lets you step through a test case one command at a time, fix broken steps on the spot, and save the result back to the YAML — without leaving the runner.
+The GUI runner includes an **IDE-style debugger** that lets you step through a test case one command at a time, set breakpoints, fix broken steps on the spot, and save the result back to the YAML — without leaving the runner.
 
 ### Enabling debug mode
 
@@ -69,18 +69,25 @@ When paused, a panel slides up from the bottom showing the full command list for
   ○  mouse_click  textBoxLastName (UIA)  [New SIN Alert]
 ```
 
-Completed commands show ✓, the current command shows ▶, pending commands show ○.
+Completed commands show ✓, the current command shows ▶, pending commands show ○. The left gutter shows ◌/● breakpoint dots — click to toggle, or press **F9**.
 
 ### Controls
 
-| Button | What it does |
+| Action | What it does |
 | --- | --- |
-| **▶ Run** | Execute the highlighted command and pause at the next one. |
-| **⏭ Skip** | Skip the highlighted command (mark it skipped in results) and advance. |
-| **⏺ Re-record Step** | Skip the remaining commands in the step, then start live-recording your interactions. Stop recording to replace the whole step's `machine:` block with the newly captured commands. |
-| **🗑 Delete Step** | Remove the entire step from the YAML file immediately. |
+| **▶ Step** (F10) | Execute the current command and pause before the next one. |
+| **▶▶ Run** (F5) | Run until the next breakpoint or end of the case. |
+| **⏭ Skip** | Skip the current command without executing it and advance. |
+| **⏺ Re-record Step** | Skip remaining commands in the step, then live-record your interactions. Stop recording to replace the step's `machine:` block with the captured commands. |
+| **🗑 Delete Step** | Remove the entire step from the YAML immediately (with undo). |
+| **Undo / Redo** | Step through YAML edits (delete, re-record) forward and backward. |
+| **Drag ▶ row** | Drag the current-command row to any other row to jump execution forward or backward within the step. |
 
-The Command Inspector panel can be **dragged upward** to reveal more of the command list.
+The Command Inspector panel can be **dragged upward** to reveal more of the step list. All test-case steps are shown in the left rail — done steps are collapsed, the current step is expanded, future steps are dimmed.
+
+### Detachable debug panel
+
+Click **↗ Detach** in the inspector topbar to pop the debug panel out into a separate browser window. This is useful on a second monitor or when you need the main GUI visible at the same time. The detached panel connects to the same runner session over HTTP and shows the same live state — paused command, breakpoints, step list. Click **↙ Attach** in the GUI to bring it back inline.
 
 ### Re-recording captures window scope
 

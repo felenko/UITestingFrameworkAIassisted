@@ -20,11 +20,13 @@ const (
 	Log                Type = "log"
 
 	// Debug / recording events (GUI debug mode).
-	StepPaused       Type = "step.paused"      // step-level debugger waiting (legacy)
-	CommandPaused    Type = "command.paused"    // command-level debugger waiting
-	RecordingBegan   Type = "recording.began"   // input recording started
-	RecordingUpdate  Type = "recording.update"  // a new action was captured
-	RecordingStopped Type = "recording.stopped" // recording ended
+	StepPaused          Type = "step.paused"           // step-level debugger waiting (legacy)
+	CommandPaused       Type = "command.paused"         // command-level debugger waiting
+	CommandExecuting    Type = "command.executing"      // command executing in run mode (non-blocking)
+	BreakpointToggled   Type = "breakpoint.toggled"     // F9 or gutter click toggled a breakpoint
+	RecordingBegan      Type = "recording.began"       // input recording started
+	RecordingUpdate     Type = "recording.update"      // a new action was captured
+	RecordingStopped    Type = "recording.stopped"     // recording ended
 )
 
 // Event is a single progress message. Fields are populated as relevant to Type.
@@ -68,14 +70,23 @@ type Event struct {
 	Message string `json:"message,omitempty"`
 
 	// Debug mode (step.paused / command.paused / recording.*).
-	MachineCmds   []string `json:"machineCmds,omitempty"`   // per-command descriptions
-	RecordedDesc  string   `json:"recordedDesc,omitempty"`  // latest captured action description
-	RecordedCount int      `json:"recordedCount,omitempty"` // total captured so far
+	MachineCmds   []string      `json:"machineCmds,omitempty"`   // per-command descriptions for current step
+	RecordedDesc  string        `json:"recordedDesc,omitempty"`  // latest captured action description
+	RecordedCount int           `json:"recordedCount,omitempty"` // total captured so far
 
-	// Command-level debug fields (command.paused).
-	CmdIndex  int    `json:"cmdIndex,omitempty"`
-	TotalCmds int    `json:"totalCmds,omitempty"`
-	CmdDesc   string `json:"cmdDesc,omitempty"`
+	// Command-level debug fields (command.paused / breakpoint.toggled).
+	CmdIndex         int           `json:"cmdIndex,omitempty"`
+	TotalCmds        int           `json:"totalCmds,omitempty"`
+	CmdDesc          string        `json:"cmdDesc,omitempty"`
+	UpcomingSteps    []StepSummary `json:"upcomingSteps,omitempty"` // next steps after the current one
+	AllSteps         []StepSummary `json:"allSteps,omitempty"`      // all steps of the current case (IDE view)
+	BreakpointActive bool          `json:"breakpointActive,omitempty"` // new state after breakpoint.toggled
+}
+
+// StepSummary is a brief preview of a step shown in the multi-step debug view.
+type StepSummary struct {
+	Human string   `json:"human"`
+	Cmds  []string `json:"cmds"`
 }
 
 // Handler receives events.

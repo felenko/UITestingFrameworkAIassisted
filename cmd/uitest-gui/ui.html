@@ -68,29 +68,67 @@ code{font-family:ui-monospace,Consolas,monospace;color:var(--muted)}
 .mode-toggle button{border-radius:7px;padding:7px 14px;font-size:13px;border:0;background:transparent;color:var(--muted);font-weight:600;cursor:pointer}
 .mode-toggle button.active{background:var(--accent);color:#06121f}
 .mode-toggle button.active.debug-mode{background:var(--debug);color:#fff}
-/* Command Inspector (IDE-style debugger panel) */
-#step-inspector{position:fixed;bottom:0;left:0;right:0;z-index:100;background:var(--panel);border-top:2px solid var(--debug);padding:0;box-shadow:0 -4px 24px rgba(0,0,0,.5);transition:transform .2s;display:flex;flex-direction:column;height:var(--dbg-h,auto);overflow:hidden}
+/* Command Inspector — TestCase IDE panel slides up from bottom */
+#step-inspector{position:fixed;bottom:0;left:0;right:0;z-index:100;background:var(--panel);border-top:2px solid var(--debug);padding:0;box-shadow:0 -4px 24px rgba(0,0,0,.5);transition:transform .2s;display:flex;flex-direction:column;height:var(--dbg-h,300px);overflow:hidden}
 #step-inspector.hidden{transform:translateY(100%)}
-#step-inspector h4{margin:0 0 4px;color:var(--debug);font-size:13px;text-transform:uppercase;letter-spacing:.08em}
 .si-resizer{height:6px;cursor:ns-resize;flex-shrink:0;background:var(--debug);opacity:.25;transition:opacity .15s}
 .si-resizer:hover{opacity:.7}
 body.si-dragging{cursor:ns-resize;user-select:none}
 body.si-dragging .si-resizer{opacity:.9}
-.si-body{padding:12px 24px 14px;overflow-y:auto;flex:1;min-height:0}
-.si-step-label{color:var(--muted);font-size:12px;margin-bottom:8px;font-style:italic}
-.ci-cmdlist{max-height:calc(max(60px,var(--dbg-h,290px) - 140px));overflow-y:auto;font-family:ui-monospace,Consolas,monospace;font-size:12px;margin-bottom:10px;border:1px solid var(--border);border-radius:8px}
-.ci-cmd{padding:4px 10px;display:flex;align-items:center;gap:8px;border-bottom:1px solid var(--border)}
+/* Topbar: title + context + control buttons */
+.si-topbar{display:flex;align-items:center;gap:8px;padding:6px 14px;flex-wrap:wrap;border-bottom:1px solid var(--border);background:var(--panel);flex-shrink:0}
+.si-title{color:var(--debug);font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;white-space:nowrap}
+#si-header{font-size:11px;color:var(--muted);white-space:nowrap}
+.si-topbar .si-actions{display:flex;gap:5px;flex-wrap:wrap;align-items:center;margin-left:auto}
+.si-topbar .si-actions button{padding:5px 12px;font-size:12px}
+#si-running{font-size:12px;color:var(--muted);margin-left:auto;white-space:nowrap}
+/* Scrollable step+command list */
+.ci-cmdlist{flex:1;min-height:0;overflow-y:auto;font-family:ui-monospace,Consolas,monospace;font-size:12px}
+/* Individual machine command rows (inside a step group) */
+.ci-cmd{padding:3px 10px 3px 34px;display:flex;align-items:center;gap:8px;border-bottom:1px solid var(--border)}
 .ci-cmd:last-child{border-bottom:none}
 .ci-cmd.ci-done{color:var(--pass);opacity:.7}
 .ci-cmd.ci-curr{background:rgba(198,120,221,.12);color:var(--debug);font-weight:600}
 .ci-cmd.ci-pend{color:var(--muted)}
+.ci-cmd.ci-next{color:var(--muted);opacity:.5}
 .ci-dot{width:16px;text-align:center;flex-shrink:0;font-size:11px}
-.si-actions{display:flex;gap:8px;flex-wrap:wrap}
-.si-actions button{padding:8px 18px;font-size:13px}
-button.dbg-run{background:var(--pass);color:#06120a}
+button.dbg-step{background:var(--pass);color:#06120a}
+button.dbg-run{background:#1a4a6b;color:#7ec8e3;border:1px solid #2a6090}
 button.dbg-skip{background:var(--panel2);color:var(--muted);border:1px solid var(--border)}
 button.dbg-rec{background:var(--rec);color:#fff}
 button.dbg-del{background:rgba(231,76,60,.15);color:var(--fail);border:1px solid var(--fail)}
+/* IDE step groups in the inspector */
+.ci-step-grp{border-bottom:1px solid var(--border)}
+.ci-step-head{display:flex;align-items:center;gap:5px;padding:5px 10px;font-size:12px;cursor:pointer;user-select:none;font-style:italic}
+.ci-step-head.ci-step-curr{background:rgba(198,120,221,.1);color:var(--debug);font-weight:600;font-style:normal;border-left:3px solid var(--debug);padding-left:7px;cursor:default}
+.ci-step-head.ci-step-done{color:var(--pass);opacity:.65;font-style:normal}
+.ci-step-head.ci-step-pend{color:var(--muted)}
+.ci-step-icon{width:16px;text-align:center;flex-shrink:0;font-size:11px}
+.ci-step-num{color:var(--muted);font-size:11px;flex-shrink:0;min-width:20px;text-align:right}
+.ci-step-lbl{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0}
+.ci-step-cmds{background:var(--panel2);border-top:1px solid var(--border);padding:2px 0}
+.ci-step-grp.ci-collapsed .ci-step-cmds{display:none}
+/* Machine steps in case tree (overview) */
+.step.step-mc{font-family:ui-monospace,Consolas,monospace;font-size:11px;opacity:.6;margin-left:20px;padding-left:8px;border-left:1px solid var(--border);color:var(--muted)}
+/* Detach attach-back pill */
+#debug-detach-bar{position:fixed;bottom:16px;right:16px;z-index:98;background:var(--panel);border:1px solid var(--debug);border-radius:10px;padding:7px 14px;display:flex;align-items:center;gap:10px;box-shadow:0 2px 12px rgba(0,0,0,.4)}
+#debug-detach-bar span{font-size:12px;color:var(--debug)}
+#debug-detach-bar button{padding:4px 12px;font-size:12px}
+/* Phase section headers in overview and inspector */
+.step.step-section{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-top:6px;opacity:.7}
+.ci-section-hdr{padding:4px 10px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);background:var(--panel2);border-top:2px solid var(--border);border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center}
+/* Breakpoint gutter */
+.ci-bp{width:14px;text-align:center;flex-shrink:0;font-size:10px;cursor:pointer;opacity:.3;transition:opacity .1s;user-select:none}
+.ci-bp:hover{opacity:1}
+.ci-bp.bp-set{color:#e74c3c;opacity:1}
+/* Executing indicator (run mode — not paused) */
+.ci-cmd.ci-exec{background:rgba(41,128,185,.08);color:var(--accent)}
+.ci-cmd.ci-exec .ci-dot{animation:exec-pulse .9s ease-in-out infinite}
+@keyframes exec-pulse{0%,100%{opacity:1}50%{opacity:.2}}
+/* Draggable execution pointer */
+.ci-cmd.ci-curr{cursor:grab}
+.ci-cmd.ci-curr:active{cursor:grabbing}
+.ci-cmd.drop-target{outline:2px solid var(--debug);outline-offset:-2px;background:rgba(198,120,221,.18)}
 /* Recording panel */
 #recording-panel{position:fixed;bottom:0;left:0;right:0;z-index:101;background:var(--panel);border-top:2px solid var(--rec);padding:16px 24px;box-shadow:0 -4px 24px rgba(0,0,0,.5);transition:transform .2s}
 #recording-panel.hidden{transform:translateY(100%)}
@@ -303,20 +341,31 @@ button.dbg-del{background:rgba(231,76,60,.15);color:var(--fail);border:1px solid
 
 </div>
 
-<!-- Command Inspector (IDE-style debug mode, slides up from bottom) -->
+<!-- Debug detach attach-back pill (shown when panel is popped out to browser) -->
+<div id="debug-detach-bar" class="hidden">
+  <span>🐞 Debug panel open in browser</span>
+  <code id="debug-panel-url" style="font-size:10px;color:var(--muted);cursor:pointer" title="Click to copy URL" onclick="navigator.clipboard.writeText(this.textContent)"></code>
+  <button onclick="reOpenDebugPanel()" style="font-size:11px;padding:3px 10px">↗ Re-open</button>
+  <button onclick="attachDebug()">↙ Attach</button>
+</div>
+
+<!-- Command Inspector (TestCase IDE debug panel, slides up from bottom) -->
 <div id="step-inspector" class="hidden">
   <div class="si-resizer" onmousedown="onSiResizerDown(event)"></div>
-  <div class="si-body">
-    <h4>🐞 Command Inspector &nbsp;<span class="muted" id="si-header" style="font-size:11px;text-transform:none;letter-spacing:0;font-weight:400"></span></h4>
-    <div class="si-step-label" id="si-step-label"></div>
-    <div class="ci-cmdlist" id="ci-cmdlist"></div>
-    <div class="si-actions">
-      <button class="dbg-run" onclick="debugCmdVerdict('run')">▶ Run</button>
-      <button class="dbg-skip" onclick="debugCmdVerdict('skip')">⏭ Skip</button>
-      <button class="dbg-rec" onclick="debugCmdVerdict('replace')">⏺ Re-record Step</button>
-      <button class="dbg-del" onclick="debugDeleteStep()" title="Remove this step from the YAML">🗑 Delete Step</button>
+  <div class="si-topbar">
+    <span class="si-title">🐞 Debug</span>
+    <span class="muted" id="si-header"></span>
+    <div class="si-actions" id="si-actions">
+      <button class="ghost" onclick="detachDebug()" title="Open debug panel in browser window" style="padding:4px 10px;font-size:11px;background:var(--panel2);color:var(--debug);border:1px solid var(--debug)">↗ Detach</button>
+      <button class="dbg-step" onclick="debugCmdVerdict('step')" title="Execute this command and pause before the next (F10)">▶ Step (F10)</button>
+      <button class="dbg-run"  onclick="debugCmdVerdict('run')"  title="Run until the next breakpoint or end of case (F5)">▶▶ Run (F5)</button>
+      <button class="dbg-skip" onclick="debugCmdVerdict('skip')" title="Skip this command">⏭ Skip</button>
+      <button class="dbg-rec" onclick="debugCmdVerdict('replace')">⏺ Re-record</button>
+      <button class="dbg-del" onclick="debugDeleteStep()" title="Remove this step from the YAML">🗑 Del Step</button>
     </div>
+    <div id="si-running" class="hidden">▶▶ running… (F9 to pause)</div>
   </div>
+  <div class="ci-cmdlist" id="ci-cmdlist"></div>
 </div>
 
 <!-- Recording Panel (step re-record or new session, slides up from bottom) -->
@@ -337,9 +386,11 @@ let totalCases=0, done=0, pass=0, fail=0, err=0;
 let runActive=false, runPaused=false;
 let currentSection='picker';
 let debugMode=false;
+let debugDetached=false;
 let aiErrCount=0;
 let recordingMode='step'; // 'step' (re-record) | 'new-session'
 let newSessData={};
+let _debugPanelWindow=null;
 
 function show(id){
   currentSection=id;
@@ -430,7 +481,17 @@ function makeCaseEl(c){
   const tags=(c.tags||[]).map(t=>`<span class="tag">${esc(t)}</span>`).join('');
   let details='';
   if(c.description)details+=`<div class="step" style="font-style:italic">${esc(c.description)}</div>`;
-  for(const st of (c.steps||[]))details+=`<div class="step">· ${esc(st)}</div>`;
+  function renderStepList(steps,prefix){
+    for(const st of steps){
+      const h=typeof st==='string'?st:(st.human||'');
+      details+=`<div class="step">${prefix} ${esc(h)}</div>`;
+      for(const mc of (typeof st==='object'?(st.machine||[]):[]))
+        details+=`<div class="step step-mc">⚙ ${esc(mc)}</div>`;
+    }
+  }
+  if((c.setup||[]).length>0){details+=`<div class="step step-section">Setup</div>`;renderStepList(c.setup,'↳');}
+  if((c.steps||[]).length>0){if((c.setup||[]).length>0||(c.cleanup||[]).length>0)details+=`<div class="step step-section">Steps</div>`;renderStepList(c.steps,'·');}
+  if((c.cleanup||[]).length>0){details+=`<div class="step step-section">Cleanup</div>`;renderStepList(c.cleanup,'↳');}
   for(const a of (c.asserts||[]))details+=`<div class="step">✓ ${esc(a)}</div>`;
   const hasDetails=details!=='';
   d.innerHTML=`<div class="case-row">`+
@@ -555,6 +616,9 @@ function startRunWith(cases){
   const runIds=(cases&&cases.length)?cases:[];
   if(!runIds.length){logline('select at least one case to run');return;}
   runActive=true; runPaused=false;
+  // Reset detach state so the inline inspector works on every fresh run.
+  debugDetached=false;
+  document.getElementById('debug-detach-bar').classList.add('hidden');
   show('live'); // also calls updateOvBanner and disables btnBack
   setPause(true);
   runQueue=runIds.slice();
@@ -712,7 +776,20 @@ window.uitestEvent=function(e){
       // Legacy event — not emitted in command-level debug mode; kept for safety.
       break;
     case 'command.paused':
-      if(debugMode) showCommandInspector(e);
+      if(debugMode&&!debugDetached){_pendingExecEvent=null;showCommandInspector(e,true);}
+      break;
+    case 'command.executing':
+      // Throttle rapid-fire updates in run mode (max ~10fps).
+      if(debugMode&&!debugDetached){
+        _pendingExecEvent=e;
+        if(!_execThrottle){_execThrottle=setTimeout(()=>{
+          _execThrottle=null;
+          if(_pendingExecEvent){showCommandInspector(_pendingExecEvent,false);_pendingExecEvent=null;}
+        },100);}
+      }
+      break;
+    case 'breakpoint.toggled':
+      handleBreakpointToggled(e);
       break;
     case 'recording.began':
       document.getElementById('rec-list').innerHTML='';
@@ -738,6 +815,10 @@ window.uitestEvent=function(e){
       setCaseChip(e.caseId,e.status,e.durationMs);
       setOverviewStatus(e.caseId,e.status);
       refreshCounts();break;
+    case 'step.finished':
+      // Cancel any pending executing indicator when a step finishes.
+      if(_execThrottle){clearTimeout(_execThrottle);_execThrottle=null;}_pendingExecEvent=null;
+      break;
     case 'run.finished':
       if(runWatchdog)clearTimeout(runWatchdog);
       runQueue.forEach(id=>{
@@ -801,6 +882,7 @@ function refreshCounts(){
 function finishRun(status){
   stopEventPoll();
   runActive=false; runPaused=false;
+  if(debugDetached){debugDetached=false;document.getElementById('debug-detach-bar').classList.add('hidden');}
   hideStepInspector();
   setPause(false);
   document.getElementById('btnLive').style.display='none';
@@ -863,6 +945,45 @@ async function switchProviderFromWarn(){
   }catch(e){logline('switch provider failed: '+(e.message||e));}
 }
 
+// --- debug panel detach/attach -------------------------------------------
+let _detachURL='';
+function detachDebug(){
+  debugDetached=true;
+  document.getElementById('step-inspector').classList.add('hidden');
+  document.getElementById('debug-detach-bar').classList.remove('hidden');
+  _detachURL=location.origin+'/debug-panel?v='+Date.now();
+  document.getElementById('debug-panel-url').textContent=location.origin+'/debug-panel';
+  // Open in system browser via Go bridge (window.open is blocked in WebView2).
+  if(typeof window.openURL==='function'){
+    window.openURL(_detachURL).catch(()=>{
+      _debugPanelWindow=window.open(_detachURL,'uitest-debug','width=960,height=540,menubar=no,toolbar=no,location=no');
+    });
+  }else{
+    _debugPanelWindow=window.open(_detachURL,'uitest-debug','width=960,height=540,menubar=no,toolbar=no,location=no');
+  }
+}
+function reOpenDebugPanel(){
+  if(!_detachURL)return;
+  if(typeof window.openURL==='function'){
+    window.openURL(_detachURL).catch(()=>{});
+  }else{
+    window.open(_detachURL,'uitest-debug','width=960,height=540,menubar=no,toolbar=no,location=no');
+  }
+}
+async function attachDebug(){
+  debugDetached=false;
+  document.getElementById('debug-detach-bar').classList.add('hidden');
+  if(!runActive||!debugMode)return;
+  document.getElementById('step-inspector').classList.remove('hidden');
+  try{
+    const r=await fetch('/debug/state');
+    if(r.ok){
+      const j=await r.json();
+      if(j.event)showCommandInspector(j.event,j.paused!==false);
+    }
+  }catch(e){}
+}
+
 // --- debug mode -----------------------------------------------------------
 function setDebugMode(on){
   debugMode=on;
@@ -878,39 +999,216 @@ function showToast(msg,ms=2500){
   setTimeout(()=>t.classList.remove('show'),ms);
 }
 
-// Command Inspector (IDE-style debugger)
-function showCommandInspector(e){
+// Breakpoint state: Map<"stepIdx:cmdIdx", bool>
+const breakpoints=new Map();
+// Execution indicator throttle (command.executing events arrive faster than we need to render).
+let _pendingExecEvent=null,_execThrottle=null;
+
+function bpKey(stepIdx,cmdIdx){return `${stepIdx}:${cmdIdx}`;}
+
+function setBpDot(el,active){
+  el.textContent=active?'●':'◌';
+  el.classList.toggle('bp-set',active);
+  el.title=active?'Breakpoint set — click to clear (F9)':'Click to set breakpoint (F9)';
+}
+
+async function toggleBreakpointUI(stepIdx,cmdIdx,dotEl){
+  try{
+    const r=await fetch('/debug/breakpoint',{method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({stepIndex:stepIdx,cmdIndex:cmdIdx})});
+    const j=await r.json();
+    const active=!!j.active;
+    const k=bpKey(stepIdx,cmdIdx);
+    if(active){breakpoints.set(k,true);}else{breakpoints.delete(k);}
+    if(dotEl) setBpDot(dotEl,active);
+  }catch(e){logline('bp toggle error: '+e.message);}
+}
+
+// Drag state for execution-point dragging.
+let _dragCmdIdx=-1;
+let _dragDropTarget=null;
+
+function _clearDropTarget(){
+  if(_dragDropTarget){_dragDropTarget.classList.remove('drop-target');_dragDropTarget=null;}
+}
+
+async function debugJump(cmdIdx){
+  try{
+    await fetch('/debug/jump',{method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({cmdIndex:cmdIdx})});
+  }catch(err){logline('jump error: '+err.message);}
+}
+
+// showCommandInspector renders the TestCase IDE debug panel.
+// paused=true  → runner waiting for verdict (buttons shown, drag enabled)
+// paused=false → runner executing in run mode (running indicator shown)
+function showCommandInspector(e,paused=true){
   document.getElementById('recording-panel').classList.add('hidden');
   const si=document.getElementById('step-inspector');
   si.classList.remove('hidden');
   document.getElementById('si-header').textContent=
-    `${e.caseId||''} · ${e.phase||''} step ${e.stepIndex||0} · cmd ${(e.cmdIndex||0)+1}/${e.totalCmds||1}`;
-  document.getElementById('si-step-label').textContent=`"${e.human||''}"`;
-  const list=document.getElementById('ci-cmdlist');list.innerHTML='';
-  (e.machineCmds||[]).forEach((desc,i)=>{
+    `${e.caseId||''} · ${e.phase||''} · step ${(e.stepIndex||0)+1} · cmd ${(e.cmdIndex||0)+1}/${e.totalCmds||1}`;
+  document.getElementById('si-actions').classList.toggle('hidden',!paused);
+  document.getElementById('si-running').classList.toggle('hidden',paused);
+
+  const list=document.getElementById('ci-cmdlist');
+  list.innerHTML='';
+  _dragCmdIdx=-1;
+  _dragDropTarget=null;
+
+  const allSteps=e.allSteps||[];
+  const curStep=e.stepIndex||0;
+  const curCmd=e.cmdIndex||0;
+
+  function makeCmdRow(desc,sIdx,ci,isDoneStep,isCurrStep,paused){
     const d=document.createElement('div');
-    if(i<e.cmdIndex){
-      d.className='ci-cmd ci-done';
-      d.innerHTML=`<span class="ci-dot">✓</span><span>${i+1}. ${esc(desc)}</span>`;
-    }else if(i===e.cmdIndex){
-      d.className='ci-cmd ci-curr';
-      d.innerHTML=`<span class="ci-dot">▶</span><span>${i+1}. ${esc(desc)}</span>`;
+    const bpDot=document.createElement('span');
+    bpDot.className='ci-bp';
+    const k=bpKey(sIdx,ci);
+    setBpDot(bpDot,breakpoints.has(k));
+    bpDot.onclick=()=>toggleBreakpointUI(sIdx,ci,bpDot);
+    d.dataset.bpStep=String(sIdx);
+    d.dataset.bpCmd=String(ci);
+    d.dataset.cmdIdx=String(ci);
+
+    if(isCurrStep){
+      if(ci<curCmd){
+        d.className='ci-cmd ci-done';
+        d.innerHTML=`<span class="ci-dot">✓</span><span>${ci+1}. ${esc(desc)}</span>`;
+      }else if(ci===curCmd){
+        d.className=paused?'ci-cmd ci-curr':'ci-cmd ci-exec';
+        d.innerHTML=`<span class="ci-dot">${paused?'▶':'→'}</span><span>${ci+1}. ${esc(desc)}</span>`;
+        if(paused){
+          d.draggable=true;
+          d.addEventListener('dragstart',(ev)=>{_dragCmdIdx=ci;ev.dataTransfer.effectAllowed='move';ev.dataTransfer.setData('text/plain',String(ci));});
+          d.addEventListener('dragend',()=>{_dragCmdIdx=-1;_clearDropTarget();});
+        }
+      }else{
+        d.className='ci-cmd ci-pend';
+        d.innerHTML=`<span class="ci-dot">○</span><span>${ci+1}. ${esc(desc)}</span>`;
+      }
+      if(paused){
+        d.addEventListener('dragover',(ev)=>{if(_dragCmdIdx<0)return;ev.preventDefault();ev.dataTransfer.dropEffect='move';if(_dragDropTarget!==d){_clearDropTarget();_dragDropTarget=d;d.classList.add('drop-target');}});
+        d.addEventListener('dragleave',()=>{if(_dragDropTarget===d)_clearDropTarget();});
+        d.addEventListener('drop',(ev)=>{ev.preventDefault();_clearDropTarget();const t=parseInt(d.dataset.cmdIdx);if(!isNaN(t)&&t!==_dragCmdIdx)debugJump(t);_dragCmdIdx=-1;});
+      }
     }else{
-      d.className='ci-cmd ci-pend';
-      d.innerHTML=`<span class="ci-dot">○</span><span>${i+1}. ${esc(desc)}</span>`;
+      d.className=isDoneStep?'ci-cmd ci-done':'ci-cmd ci-next';
+      d.innerHTML=`<span class="ci-dot">${isDoneStep?'✓':'○'}</span><span>${ci+1}. ${esc(desc)}</span>`;
     }
-    list.appendChild(d);
-  });
-  const curr=list.querySelector('.ci-curr');
-  if(curr)curr.scrollIntoView({behavior:'smooth',block:'nearest'});
-  // Store context for delete/re-record
+    d.prepend(bpDot);
+    return d;
+  }
+
+  const isStepsPhase=(e.phase||'')==='steps';
+
+  if(isStepsPhase&&allSteps.length>0){
+    // Full IDE view: all test case steps with status and drag/drop
+    allSteps.forEach((step,sIdx)=>{
+      const isDone=sIdx<curStep;
+      const isCurr=sIdx===curStep;
+      const grp=document.createElement('div');
+      grp.className='ci-step-grp'+(isCurr?'':' ci-collapsed');
+
+      const head=document.createElement('div');
+      const hIcon=isDone?'✓':isCurr?'▶':'○';
+      const hCls=isDone?'ci-step-done':isCurr?'ci-step-curr':'ci-step-pend';
+      head.className=`ci-step-head ${hCls}`;
+      head.innerHTML=`<span class="ci-step-icon">${hIcon}</span><span class="ci-step-num">${sIdx+1}.</span><span class="ci-step-lbl">${esc(step.human||'')}</span>`;
+      if(!isCurr){head.addEventListener('click',()=>grp.classList.toggle('ci-collapsed'));}
+      grp.appendChild(head);
+
+      const cmdsEl=document.createElement('div');
+      cmdsEl.className='ci-step-cmds';
+      (step.cmds||[]).forEach((desc,ci)=>{
+        cmdsEl.appendChild(makeCmdRow(desc,sIdx,ci,isDone,isCurr,paused));
+      });
+      if(cmdsEl.children.length>0)grp.appendChild(cmdsEl);
+      list.appendChild(grp);
+    });
+  }else{
+    // Non-steps phase (setup/teardown/etc): show current phase commands,
+    // then a "TEST CASE STEPS" section so user can set breakpoints.
+    const phaseHead=document.createElement('div');
+    phaseHead.className='ci-step-head ci-step-curr';
+    phaseHead.innerHTML=`<span class="ci-step-icon">▶</span><span class="ci-step-lbl">${esc(e.human||'')} <span style="opacity:.5;font-size:10px;font-weight:400">[${esc(e.phase||'')} step ${(e.stepIndex||0)+1}]</span></span>`;
+    list.appendChild(phaseHead);
+    (e.machineCmds||[]).forEach((desc,i)=>{
+      list.appendChild(makeCmdRow(desc,curStep,i,false,true,paused));
+    });
+
+    if(allSteps.length>0){
+      const secHdr=document.createElement('div');
+      secHdr.className='ci-section-hdr';
+      secHdr.innerHTML=`<span>Test Case Steps</span><span style="font-weight:400;text-transform:none;letter-spacing:0">click ◌ to set breakpoint, then ▶▶ Run</span>`;
+      list.appendChild(secHdr);
+      allSteps.forEach((step,sIdx)=>{
+        const grp=document.createElement('div');
+        grp.className='ci-step-grp ci-collapsed';
+        const head=document.createElement('div');
+        head.className='ci-step-head ci-step-pend';
+        head.innerHTML=`<span class="ci-step-icon">○</span><span class="ci-step-num">${sIdx+1}.</span><span class="ci-step-lbl">${esc(step.human||'')}</span>`;
+        head.addEventListener('click',()=>grp.classList.toggle('ci-collapsed'));
+        grp.appendChild(head);
+        const cmdsEl=document.createElement('div');
+        cmdsEl.className='ci-step-cmds';
+        (step.cmds||[]).forEach((desc,ci)=>{
+          const d=document.createElement('div');
+          d.className='ci-cmd ci-next';
+          const bpDot=document.createElement('span');
+          bpDot.className='ci-bp';
+          const k=bpKey(sIdx,ci);
+          setBpDot(bpDot,breakpoints.has(k));
+          bpDot.onclick=()=>toggleBreakpointUI(sIdx,ci,bpDot);
+          d.dataset.bpStep=String(sIdx);d.dataset.bpCmd=String(ci);
+          d.innerHTML=`<span class="ci-dot">○</span><span>${ci+1}. ${esc(desc)}</span>`;
+          d.prepend(bpDot);
+          cmdsEl.appendChild(d);
+        });
+        if(cmdsEl.children.length>0)grp.appendChild(cmdsEl);
+        list.appendChild(grp);
+      });
+    }
+  }
+
+  // Scroll current command into view
+  const curr=list.querySelector('.ci-curr,.ci-exec');
+  if(curr)curr.scrollIntoView({behavior:'smooth',block:'center'});
+  else{const ch=list.querySelector('.ci-step-curr');if(ch)ch.scrollIntoView({behavior:'smooth',block:'nearest'});}
   si.dataset.caseId=e.caseId||'';
   si.dataset.stepIdx=String(e.stepIndex||0);
+}
+
+// Handle F9 breakpoint toggle pushed from the hotkey handler.
+function handleBreakpointToggled(e){
+  const k=bpKey(e.stepIndex||0,e.cmdIndex||0);
+  if(e.breakpointActive){breakpoints.set(k,true);}else{breakpoints.delete(k);}
+  // Refresh the dot in the current inspector view if it's showing.
+  const list=document.getElementById('ci-cmdlist');
+  const rows=list.querySelectorAll('.ci-cmd');
+  rows.forEach(row=>{
+    const dot=row.querySelector('.ci-bp');
+    if(!dot)return;
+    // We stored stepIdx and cmdIdx on each row when building the list.
+    if(row.dataset.bpStep===String(e.stepIndex||0)&&row.dataset.bpCmd===String(e.cmdIndex||0)){
+      setBpDot(dot,e.breakpointActive);
+    }
+  });
 }
 function hideStepInspector(){
   document.getElementById('step-inspector').classList.add('hidden');
   document.getElementById('recording-panel').classList.add('hidden');
 }
+
+// F5/F10 keyboard shortcuts when the GUI window itself has focus.
+document.addEventListener('keydown',function(ev){
+  if(!debugMode)return;
+  if(document.getElementById('step-inspector').classList.contains('hidden'))return;
+  if(ev.key==='F10'){ev.preventDefault();debugCmdVerdict('step');}
+  else if(ev.key==='F5'){ev.preventDefault();debugCmdVerdict('run');}
+});
 
 // --- Debug panel drag-to-resize ---
 let _siDrag=null;
@@ -941,7 +1239,7 @@ async function debugCmdVerdict(action){
       recordingMode='step';
     }
     // For run/skip: inspector stays; updates on next command.paused event
-  }catch(e){logline('debug cmd verdict error: '+e.message);}
+  }catch(e){logline('debug cmd verdict error: '+e.message);showToast('Debug error: '+e.message,4000);}
 }
 
 async function debugDeleteStep(){

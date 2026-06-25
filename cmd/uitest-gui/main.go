@@ -25,6 +25,9 @@ const Version = "0.2.1"
 //go:embed ui.html
 var uiHTML string
 
+//go:embed debug_panel.html
+var debugPanelHTML string
+
 func main() {
 	logLifecycle("started pid=" + strconv.Itoa(os.Getpid()))
 	redirectStderr()

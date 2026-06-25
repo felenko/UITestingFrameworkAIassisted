@@ -41,6 +41,11 @@ func (a *app) serve() (string, error) {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		w.Write([]byte(uiHTML))
 	})
+	mux.HandleFunc("/debug-panel", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.Header().Set("Cache-Control", "no-store")
+		w.Write([]byte(debugPanelHTML))
+	})
 	mux.HandleFunc("/events", a.guarded(a.handleEvents))
 	mux.HandleFunc("/load", a.guarded(a.handleLoad))
 	mux.HandleFunc("/run", a.guarded(a.handleRun))
@@ -48,7 +53,10 @@ func (a *app) serve() (string, error) {
 	mux.HandleFunc("/resume", a.guarded(a.handleResume))
 	mux.HandleFunc("/update-provider", a.guarded(a.handleUpdateProvider))
 	// Debug mode endpoints.
+	mux.HandleFunc("/debug/state", a.guarded(a.handleDebugState))
 	mux.HandleFunc("/debug/verdict", a.guarded(a.handleDebugVerdict))
+	mux.HandleFunc("/debug/breakpoint", a.guarded(a.handleDebugBreakpoint))
+	mux.HandleFunc("/debug/jump", a.guarded(a.handleDebugJump))
 	mux.HandleFunc("/debug/record/stop", a.guarded(a.handleDebugRecordStop))
 	mux.HandleFunc("/debug/record/discard", a.guarded(a.handleDebugRecordDiscard))
 	mux.HandleFunc("/debug/undo", a.guarded(a.handleDebugUndo))

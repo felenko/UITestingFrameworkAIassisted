@@ -32,6 +32,12 @@ func (b *eventBuffer) append(e event.Event) int {
 	return len(b.events)
 }
 
+func (b *eventBuffer) len() int {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return len(b.events)
+}
+
 func (b *eventBuffer) since(index int) ([]event.Event, int) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -115,10 +121,39 @@ func (a *app) handleEvents(w http.ResponseWriter, r *http.Request) {
 	}
 	events, next := a.buf.since(since)
 	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "no-store")
+	// Allow the detached debug panel (opened in a real browser) to poll this endpoint.
+	w.Header().Set("Access-Control-Allow-Origin", "*")
 	_ = json.NewEncoder(w).Encode(map[string]any{
 		"events": events,
 		"next":   next,
 	})
+}
+
+func (a *app) handleDebugState(w http.ResponseWriter, r *http.Request) {
+	a.mu.Lock()
+	dbg := a.debug
+	a.mu.Unlock()
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	cursor := a.buf.len()
+	if dbg == nil {
+		_ = json.NewEncoder(w).Encode(map[string]any{"active": false, "paused": false, "cursor": cursor})
+		return
+	}
+
+	dbg.mu.Lock()
+	ev := dbg.lastPausedEvent
+	dbg.mu.Unlock()
+
+	if ev == nil {
+		_ = json.NewEncoder(w).Encode(map[string]any{"active": true, "paused": false, "cursor": cursor})
+		return
+	}
+	_ = json.NewEncoder(w).Encode(map[string]any{"active": true, "paused": true, "event": ev, "cursor": cursor})
 }
 
 func (a *app) handlePause(w http.ResponseWriter, r *http.Request) {

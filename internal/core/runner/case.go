@@ -92,6 +92,12 @@ func (r *Runner) runCaseOnce(ctx context.Context, tc *session.TestCase) (cr resu
 	r.runSessionHook(ctx, tc.ID, "beforeEach", r.sess.Session.BeforeEach)
 	defer r.runSessionHook(ctx, tc.ID, "afterEach", r.sess.Session.AfterEach)
 
+	// Inform the debugger about the case's own steps before any phase runs so
+	// breakpoints can be set on them even when the runner is paused at setup.
+	if r.opts.OnCaseSteps != nil {
+		r.opts.OnCaseSteps(tc.ID, tc.Steps)
+	}
+
 	// Setup + act phases.
 	cr.Setup = r.runPhase(ctx, tc.ID, "setup", tc.Setup, &cr)
 	actOK := cr.Status == result.StatusPassed
@@ -190,7 +196,17 @@ func (r *Runner) runStep(ctx context.Context, caseID, phase string, index int, s
 	attempts := step.Retries + 1
 	var sr result.Step
 	for attempt := 0; attempt < attempts; attempt++ {
-		sr = r.runStepOnce(ctx, caseID, phase, index, step)
+		// Inner loop: re-run the same step when a debug backward-jump requests it.
+		// StepRestartRequested is a consumed one-shot flag set by the jump handler.
+		for {
+			sr = r.runStepOnce(ctx, caseID, phase, index, step)
+			if r.opts.StepRestartRequested == nil {
+				break
+			}
+			if !r.opts.StepRestartRequested(caseID, index) {
+				break
+			}
+		}
 		if sr.Status == result.StatusPassed {
 			break
 		}

@@ -1,0 +1,416 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>uitest — Debug Panel</title>
+<style>
+:root{--bg:#0f1115;--panel:#181b22;--panel2:#1f232c;--border:#2a2f3a;--text:#e6e9ef;--muted:#9aa3b2;--pass:#2ecc71;--fail:#e74c3c;--error:#e67e22;--accent:#4a9eff;--debug:#c678dd;--rec:#e74c3c;}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;background:var(--bg);color:var(--text);font:14px/1.5 -apple-system,Segoe UI,Roboto,Arial,sans-serif;overflow:hidden}
+button{font:inherit;background:var(--accent);color:#06121f;border:0;border-radius:8px;padding:9px 16px;font-weight:600;cursor:pointer}
+button:disabled{opacity:.4;cursor:not-allowed}
+.hidden{display:none}
+.muted{color:var(--muted)}
+/* Layout: topbar fixed, cmdlist fills remaining height */
+#panel{display:flex;flex-direction:column;height:100%;border-top:2px solid var(--debug)}
+/* Topbar */
+.si-topbar{display:flex;align-items:center;gap:8px;padding:7px 14px;flex-wrap:wrap;border-bottom:1px solid var(--border);background:var(--panel);flex-shrink:0}
+.si-title{color:var(--debug);font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;white-space:nowrap}
+#si-header{font-size:11px;color:var(--muted);white-space:nowrap}
+.si-topbar .si-actions{display:flex;gap:5px;flex-wrap:wrap;align-items:center;margin-left:auto}
+.si-topbar .si-actions button{padding:5px 12px;font-size:12px}
+#si-running{font-size:12px;color:var(--muted);margin-left:auto;white-space:nowrap}
+button.dbg-step{background:var(--pass);color:#06120a}
+button.dbg-run{background:#1a4a6b;color:#7ec8e3;border:1px solid #2a6090}
+button.dbg-skip{background:var(--panel2);color:var(--muted);border:1px solid var(--border)}
+button.dbg-rec{background:var(--rec);color:#fff}
+button.dbg-del{background:rgba(231,76,60,.15);color:var(--fail);border:1px solid var(--fail)}
+/* Scrollable step list */
+.ci-cmdlist{flex:1;min-height:0;overflow-y:auto;font-family:ui-monospace,Consolas,monospace;font-size:12px}
+/* Command rows */
+.ci-cmd{padding:3px 10px 3px 34px;display:flex;align-items:center;gap:8px;border-bottom:1px solid var(--border)}
+.ci-cmd:last-child{border-bottom:none}
+.ci-cmd.ci-done{color:var(--pass);opacity:.7}
+.ci-cmd.ci-curr{background:rgba(198,120,221,.12);color:var(--debug);font-weight:600}
+.ci-cmd.ci-pend{color:var(--muted)}
+.ci-cmd.ci-next{color:var(--muted);opacity:.5}
+.ci-cmd.ci-exec{background:rgba(41,128,185,.08);color:var(--accent)}
+.ci-cmd.ci-exec .ci-dot{animation:exec-pulse .9s ease-in-out infinite}
+@keyframes exec-pulse{0%,100%{opacity:1}50%{opacity:.2}}
+.ci-cmd.ci-curr{cursor:grab}.ci-cmd.ci-curr:active{cursor:grabbing}
+.ci-cmd.drop-target{outline:2px solid var(--debug);outline-offset:-2px;background:rgba(198,120,221,.18)}
+.ci-dot{width:16px;text-align:center;flex-shrink:0;font-size:11px}
+/* Breakpoint gutter */
+.ci-bp{width:14px;text-align:center;flex-shrink:0;font-size:10px;cursor:pointer;opacity:.3;transition:opacity .1s;user-select:none}
+.ci-bp:hover{opacity:1}
+.ci-bp.bp-set{color:#e74c3c;opacity:1}
+/* IDE step groups */
+.ci-step-grp{border-bottom:1px solid var(--border)}
+.ci-step-head{display:flex;align-items:center;gap:5px;padding:5px 10px;font-size:12px;cursor:pointer;user-select:none;font-style:italic}
+.ci-step-head.ci-step-curr{background:rgba(198,120,221,.1);color:var(--debug);font-weight:600;font-style:normal;border-left:3px solid var(--debug);padding-left:7px;cursor:default}
+.ci-step-head.ci-step-done{color:var(--pass);opacity:.65;font-style:normal}
+.ci-step-head.ci-step-pend{color:var(--muted)}
+.ci-step-icon{width:16px;text-align:center;flex-shrink:0;font-size:11px}
+.ci-step-num{color:var(--muted);font-size:11px;flex-shrink:0;min-width:20px;text-align:right}
+.ci-step-lbl{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0}
+.ci-step-cmds{background:var(--panel2);border-top:1px solid var(--border);padding:2px 0}
+.ci-step-grp.ci-collapsed .ci-step-cmds{display:none}
+.ci-section-hdr{padding:4px 10px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);background:var(--panel2);border-top:2px solid var(--border);border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center}
+/* Recording panel */
+#recording-panel{position:fixed;bottom:0;left:0;right:0;z-index:10;background:var(--panel);border-top:2px solid var(--rec);padding:14px 20px;box-shadow:0 -4px 24px rgba(0,0,0,.5)}
+#recording-panel.hidden{display:none}
+#recording-panel h4{margin:0 0 8px;color:var(--rec);font-size:13px;text-transform:uppercase;letter-spacing:.08em;display:flex;align-items:center;gap:8px}
+.rec-pulse{width:10px;height:10px;background:var(--rec);border-radius:50%;animation:pulse 1s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+#rec-list{max-height:100px;overflow-y:auto;margin-bottom:10px;font-family:ui-monospace,Consolas,monospace;font-size:12px}
+.rec-item{padding:3px 0;border-bottom:1px solid var(--border);color:var(--text)}
+.rec-actions{display:flex;gap:8px}
+/* Waiting overlay */
+#waiting{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;background:var(--bg);color:var(--muted);font-size:14px;z-index:5}
+#waiting.hidden{display:none}
+#waiting .dot{width:8px;height:8px;background:var(--debug);border-radius:50%;animation:pulse 1.2s infinite}
+/* Log bar at bottom */
+#logbar{position:fixed;bottom:0;left:0;right:0;background:var(--panel2);border-top:1px solid var(--border);padding:3px 12px;font-family:ui-monospace,Consolas,monospace;font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;z-index:6}
+</style>
+</head>
+<body>
+
+<div id="waiting">
+  <div class="dot"></div>
+  <span id="wait-status">Waiting for debug session…</span>
+  <ol style="font-size:12px;text-align:left;color:var(--muted);margin:8px 0 0;padding:0 0 0 1.4em;line-height:2.2">
+    <li>In uitest-gui, click <strong style="color:var(--debug)">🐞 Debug</strong> mode</li>
+    <li>Select cases and click <strong>Run</strong></li>
+  </ol>
+</div>
+
+<div id="panel" class="hidden">
+  <div class="si-topbar">
+    <span class="si-title">🐞 Debug</span>
+    <span class="muted" id="si-header"></span>
+    <div class="si-actions" id="si-actions">
+      <button class="dbg-step" onclick="debugCmdVerdict('step')" title="Step (F10)">▶ Step (F10)</button>
+      <button class="dbg-run"  onclick="debugCmdVerdict('run')"  title="Run to breakpoint (F5)">▶▶ Run (F5)</button>
+      <button class="dbg-skip" onclick="debugCmdVerdict('skip')" title="Skip command">⏭ Skip</button>
+      <button class="dbg-rec"  onclick="debugCmdVerdict('replace')">⏺ Re-record</button>
+      <button class="dbg-del"  onclick="debugDeleteStep()" title="Delete this step from YAML">🗑 Del Step</button>
+    </div>
+    <div id="si-running" class="hidden">▶▶ running… (F9 to pause)</div>
+  </div>
+  <div class="ci-cmdlist" id="ci-cmdlist"></div>
+</div>
+
+<div id="recording-panel" class="hidden">
+  <h4><span class="rec-pulse"></span> REC — Interact with the app. Clicks and keystrokes are captured.</h4>
+  <div id="rec-list"></div>
+  <div class="rec-actions">
+    <button class="dbg-run" onclick="recStop()">■ Stop &amp; Save</button>
+    <button class="dbg-skip" onclick="recDiscard()">✗ Discard</button>
+  </div>
+</div>
+
+<div id="logbar"></div>
+
+<script>
+const breakpoints=new Map();
+let _dragCmdIdx=-1,_dragDropTarget=null;
+let _pendingExecEvent=null,_execThrottle=null;
+let eventCursor=0,polling=false,pollTimer=null;
+// Use absolute URLs so Chrome doesn't misresolve relative paths.
+const _base=location.origin;
+
+function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
+function log(s){document.getElementById('logbar').textContent=s;}
+function bpKey(sIdx,ci){return `${sIdx}:${ci}`;}
+
+function setBpDot(el,active){
+  el.textContent=active?'●':'◌';
+  el.classList.toggle('bp-set',active);
+  el.title=active?'Breakpoint set — click to clear (F9)':'Click to set breakpoint (F9)';
+}
+
+async function toggleBreakpointUI(sIdx,ci,dotEl){
+  try{
+    const r=await fetch(_base+'/debug/breakpoint',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({stepIndex:sIdx,cmdIndex:ci})});
+    const j=await r.json();
+    const active=!!j.active;
+    const k=bpKey(sIdx,ci);
+    active?breakpoints.set(k,true):breakpoints.delete(k);
+    if(dotEl)setBpDot(dotEl,active);
+  }catch(e){log('bp error: '+e.message);}
+}
+
+function _clearDropTarget(){
+  if(_dragDropTarget){_dragDropTarget.classList.remove('drop-target');_dragDropTarget=null;}
+}
+
+async function debugJump(cmdIdx){
+  try{await fetch(_base+'/debug/jump',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({cmdIndex:cmdIdx})});}
+  catch(e){log('jump error: '+e.message);}
+}
+
+function handleBreakpointToggled(e){
+  const k=bpKey(e.stepIndex||0,e.cmdIndex||0);
+  e.breakpointActive?breakpoints.set(k,true):breakpoints.delete(k);
+  document.querySelectorAll('#ci-cmdlist .ci-cmd').forEach(row=>{
+    const dot=row.querySelector('.ci-bp');if(!dot)return;
+    if(row.dataset.bpStep===String(e.stepIndex||0)&&row.dataset.bpCmd===String(e.cmdIndex||0))
+      setBpDot(dot,e.breakpointActive);
+  });
+}
+
+function makeCmdRow(desc,sIdx,ci,isDoneStep,isCurrStep,paused,curCmd){
+  const d=document.createElement('div');
+  const bpDot=document.createElement('span');
+  bpDot.className='ci-bp';
+  const k=bpKey(sIdx,ci);
+  setBpDot(bpDot,breakpoints.has(k));
+  bpDot.onclick=()=>toggleBreakpointUI(sIdx,ci,bpDot);
+  d.dataset.bpStep=String(sIdx);d.dataset.bpCmd=String(ci);d.dataset.cmdIdx=String(ci);
+  if(isCurrStep){
+    if(ci<curCmd){
+      d.className='ci-cmd ci-done';
+      d.innerHTML=`<span class="ci-dot">✓</span><span>${ci+1}. ${esc(desc)}</span>`;
+    }else if(ci===curCmd){
+      d.className=paused?'ci-cmd ci-curr':'ci-cmd ci-exec';
+      d.innerHTML=`<span class="ci-dot">${paused?'▶':'→'}</span><span>${ci+1}. ${esc(desc)}</span>`;
+      if(paused){
+        d.draggable=true;
+        d.addEventListener('dragstart',(ev)=>{_dragCmdIdx=ci;ev.dataTransfer.effectAllowed='move';ev.dataTransfer.setData('text/plain',String(ci));});
+        d.addEventListener('dragend',()=>{_dragCmdIdx=-1;_clearDropTarget();});
+      }
+    }else{
+      d.className='ci-cmd ci-pend';
+      d.innerHTML=`<span class="ci-dot">○</span><span>${ci+1}. ${esc(desc)}</span>`;
+    }
+    if(paused){
+      d.addEventListener('dragover',(ev)=>{if(_dragCmdIdx<0)return;ev.preventDefault();ev.dataTransfer.dropEffect='move';if(_dragDropTarget!==d){_clearDropTarget();_dragDropTarget=d;d.classList.add('drop-target');}});
+      d.addEventListener('dragleave',()=>{if(_dragDropTarget===d)_clearDropTarget();});
+      d.addEventListener('drop',(ev)=>{ev.preventDefault();_clearDropTarget();const t=parseInt(d.dataset.cmdIdx);if(!isNaN(t)&&t!==_dragCmdIdx)debugJump(t);_dragCmdIdx=-1;});
+    }
+  }else{
+    d.className=isDoneStep?'ci-cmd ci-done':'ci-cmd ci-next';
+    d.innerHTML=`<span class="ci-dot">${isDoneStep?'✓':'○'}</span><span>${ci+1}. ${esc(desc)}</span>`;
+  }
+  d.prepend(bpDot);
+  return d;
+}
+
+function showCommandInspector(e,paused){
+  document.getElementById('waiting').classList.add('hidden');
+  document.getElementById('panel').classList.remove('hidden');
+  document.getElementById('recording-panel').classList.add('hidden');
+  document.getElementById('si-header').textContent=
+    `${e.caseId||''} · ${e.phase||''} · step ${(e.stepIndex||0)+1} · cmd ${(e.cmdIndex||0)+1}/${e.totalCmds||1}`;
+  document.getElementById('si-actions').classList.toggle('hidden',!paused);
+  document.getElementById('si-running').classList.toggle('hidden',paused);
+  const list=document.getElementById('ci-cmdlist');
+  list.innerHTML='';_dragCmdIdx=-1;_dragDropTarget=null;
+  const allSteps=e.allSteps||[];
+  const curStep=e.stepIndex||0;
+  const curCmd=e.cmdIndex||0;
+  const isStepsPhase=(e.phase||'')==='steps';
+  if(isStepsPhase&&allSteps.length>0){
+    allSteps.forEach((step,sIdx)=>{
+      const isDone=sIdx<curStep,isCurr=sIdx===curStep;
+      const grp=document.createElement('div');
+      grp.className='ci-step-grp'+(isCurr?'':' ci-collapsed');
+      const head=document.createElement('div');
+      const hCls=isDone?'ci-step-done':isCurr?'ci-step-curr':'ci-step-pend';
+      head.className=`ci-step-head ${hCls}`;
+      head.innerHTML=`<span class="ci-step-icon">${isDone?'✓':isCurr?'▶':'○'}</span><span class="ci-step-num">${sIdx+1}.</span><span class="ci-step-lbl">${esc(step.human||'')}</span>`;
+      if(!isCurr)head.addEventListener('click',()=>grp.classList.toggle('ci-collapsed'));
+      grp.appendChild(head);
+      const cmdsEl=document.createElement('div');cmdsEl.className='ci-step-cmds';
+      (step.cmds||[]).forEach((desc,ci)=>cmdsEl.appendChild(makeCmdRow(desc,sIdx,ci,isDone,isCurr,paused,curCmd)));
+      if(cmdsEl.children.length>0)grp.appendChild(cmdsEl);
+      list.appendChild(grp);
+    });
+  }else{
+    const ph=document.createElement('div');ph.className='ci-step-head ci-step-curr';
+    ph.innerHTML=`<span class="ci-step-icon">▶</span><span class="ci-step-lbl">${esc(e.human||'')} <span style="opacity:.5;font-size:10px;font-weight:400">[${esc(e.phase||'')} step ${(e.stepIndex||0)+1}]</span></span>`;
+    list.appendChild(ph);
+    (e.machineCmds||[]).forEach((desc,i)=>list.appendChild(makeCmdRow(desc,curStep,i,false,true,paused,curCmd)));
+    if(allSteps.length>0){
+      const sec=document.createElement('div');sec.className='ci-section-hdr';
+      sec.innerHTML=`<span>Test Case Steps</span><span style="font-weight:400;text-transform:none;letter-spacing:0">click ◌ to set breakpoint</span>`;
+      list.appendChild(sec);
+      allSteps.forEach((step,sIdx)=>{
+        const grp=document.createElement('div');grp.className='ci-step-grp ci-collapsed';
+        const head=document.createElement('div');head.className='ci-step-head ci-step-pend';
+        head.innerHTML=`<span class="ci-step-icon">○</span><span class="ci-step-num">${sIdx+1}.</span><span class="ci-step-lbl">${esc(step.human||'')}</span>`;
+        head.addEventListener('click',()=>grp.classList.toggle('ci-collapsed'));
+        grp.appendChild(head);
+        const cmdsEl=document.createElement('div');cmdsEl.className='ci-step-cmds';
+        (step.cmds||[]).forEach((desc,ci)=>{
+          const d=document.createElement('div');d.className='ci-cmd ci-next';
+          const bpDot=document.createElement('span');bpDot.className='ci-bp';
+          setBpDot(bpDot,breakpoints.has(bpKey(sIdx,ci)));
+          bpDot.onclick=()=>toggleBreakpointUI(sIdx,ci,bpDot);
+          d.dataset.bpStep=String(sIdx);d.dataset.bpCmd=String(ci);
+          d.innerHTML=`<span class="ci-dot">○</span><span>${ci+1}. ${esc(desc)}</span>`;
+          d.prepend(bpDot);cmdsEl.appendChild(d);
+        });
+        if(cmdsEl.children.length>0)grp.appendChild(cmdsEl);
+        list.appendChild(grp);
+      });
+    }
+  }
+  const curr=list.querySelector('.ci-curr,.ci-exec');
+  if(curr)curr.scrollIntoView({behavior:'smooth',block:'center'});
+  else{const ch=list.querySelector('.ci-step-curr');if(ch)ch.scrollIntoView({behavior:'smooth',block:'nearest'});}
+  // store for delete/record
+  document.getElementById('panel').dataset.caseId=e.caseId||'';
+  document.getElementById('panel').dataset.stepIdx=String(e.stepIndex||0);
+}
+
+async function debugCmdVerdict(action){
+  try{
+    const r=await fetch(_base+'/debug/verdict',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action})});
+    const j=await r.json().catch(()=>({}));
+    if(!r.ok||j.error)throw new Error(j.error||'HTTP '+r.status);
+    if(action==='replace')document.getElementById('panel').classList.add('hidden');
+  }catch(e){log('verdict error: '+e.message);}
+}
+
+async function debugDeleteStep(){
+  const panel=document.getElementById('panel');
+  const caseId=panel.dataset.caseId,stepIdx=parseInt(panel.dataset.stepIdx,10);
+  try{
+    const r=await fetch(_base+'/debug/delete-step',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({caseId,stepIdx})});
+    const j=await r.json().catch(()=>({}));
+    if(!r.ok||j.error)throw new Error(j.error||'HTTP '+r.status);
+    log(`Step ${stepIdx} deleted from ${caseId}`);
+  }catch(e){log('delete error: '+e.message);}
+}
+
+async function recStop(){
+  try{
+    const r=await fetch(_base+'/debug/record/stop',{method:'POST'});
+    const j=await r.json().catch(()=>({}));
+    if(!r.ok||j.error)throw new Error(j.error||'HTTP '+r.status);
+    document.getElementById('recording-panel').classList.add('hidden');
+    document.getElementById('panel').classList.remove('hidden');
+    log('Step saved');
+  }catch(e){log('record stop error: '+e.message);}
+}
+async function recDiscard(){
+  try{
+    const r=await fetch(_base+'/debug/record/discard',{method:'POST'});
+    const j=await r.json().catch(()=>({}));
+    if(!r.ok||j.error)throw new Error(j.error||'HTTP '+r.status);
+    document.getElementById('recording-panel').classList.add('hidden');
+    document.getElementById('panel').classList.remove('hidden');
+  }catch(e){log('record discard error: '+e.message);}
+}
+
+function handleEvent(e){
+  switch(e.type){
+    case 'command.paused':
+      _pendingExecEvent=null;
+      if(_execThrottle){clearTimeout(_execThrottle);_execThrottle=null;}
+      showCommandInspector(e,true);
+      break;
+    case 'command.executing':
+      _pendingExecEvent=e;
+      if(!_execThrottle){_execThrottle=setTimeout(()=>{
+        _execThrottle=null;
+        if(_pendingExecEvent){showCommandInspector(_pendingExecEvent,false);_pendingExecEvent=null;}
+      },100);}
+      break;
+    case 'breakpoint.toggled':
+      handleBreakpointToggled(e);break;
+    case 'recording.began':
+      document.getElementById('rec-list').innerHTML='';
+      document.getElementById('recording-panel').classList.remove('hidden');
+      break;
+    case 'recording.update':{
+      const list=document.getElementById('rec-list');
+      const d=document.createElement('div');d.className='rec-item';
+      d.textContent=`${e.recordedCount}. ${e.recordedDesc||''}`;
+      list.appendChild(d);list.scrollTop=list.scrollHeight;break;}
+    case 'step.finished':
+      if(_execThrottle){clearTimeout(_execThrottle);_execThrottle=null;}_pendingExecEvent=null;break;
+    case 'run.finished':
+      document.getElementById('panel').classList.add('hidden');
+      document.getElementById('waiting').classList.remove('hidden');
+      document.getElementById('wait-status').textContent='Run finished — start a new run in uitest-gui';
+      break;
+    case 'case.finished':
+      // Between cases: keep whatever is shown; the next command.paused will update.
+      break;
+    case 'log':
+      if(e.level==='error')log('[error] '+(e.message||''));break;
+  }
+}
+
+async function doPoll(){
+  if(polling)return;
+  polling=true;
+  try{
+    const r=await fetch(_base+'/events?since='+eventCursor);
+    if(r.ok){
+      const j=await r.json();
+      const evts=j.events||[];
+      if(evts.length)log('connected · '+evts.length+' event(s) received');
+      for(const e of evts)handleEvent(e);
+      if(typeof j.next==='number')eventCursor=j.next;
+    }else{
+      log('poll error: HTTP '+r.status);
+    }
+  }catch(e){
+    log('poll error: '+e.message+' (check '+_base+')');
+  }finally{polling=false;}
+}
+
+function startPoll(){
+  if(pollTimer)return;
+  pollTimer=setInterval(doPoll,200);
+}
+
+async function init(){
+  const waitStatus=document.getElementById('wait-status');
+  function setStatus(s){if(waitStatus)waitStatus.textContent=s;log(s);}
+  try{
+    setStatus('Connecting…');
+    const r=await fetch(_base+'/debug/state');
+    const text=await r.text();
+    if(r.ok){
+      const j=JSON.parse(text);
+      if(typeof j.cursor==='number') eventCursor=j.cursor;
+      if(j.event){
+        // Force panel visible before calling showCommandInspector so even a
+        // JS exception inside it doesn't leave the waiting overlay in place.
+        document.getElementById('waiting').classList.add('hidden');
+        document.getElementById('panel').classList.remove('hidden');
+        try{
+          showCommandInspector(j.event,true);
+          log('init: inspector shown ('+j.event.type+')');
+        }catch(err){
+          log('init: showCommandInspector error: '+err.message);
+        }
+      }else if(j.active){
+        setStatus('Run in progress — waiting for next pause…');
+      }else{
+        setStatus('Waiting for debug session…');
+      }
+    }else{
+      setStatus('Server error: HTTP '+r.status);
+    }
+  }catch(e){
+    setStatus('Connection error: '+e.message);
+  }
+  startPoll();
+}
+
+document.addEventListener('keydown',function(ev){
+  if(document.getElementById('panel').classList.contains('hidden'))return;
+  if(ev.key==='F10'){ev.preventDefault();debugCmdVerdict('step');}
+  else if(ev.key==='F5'){ev.preventDefault();debugCmdVerdict('run');}
+});
+
+init();
+</script>
+</body>
+</html>

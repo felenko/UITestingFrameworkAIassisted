@@ -82,6 +82,16 @@ type Options struct {
 	// command within every step. Return VerdictSkip to skip just this command;
 	// VerdictRun to execute it normally. It may block (command-level pause).
 	BeforeEachCommand func(ctx context.Context, ev CommandHookEvent) StepVerdict
+
+	// OnCaseSteps, if non-nil, is called before the steps phase of each case
+	// with the complete ordered step list. Used by the GUI debug mode to
+	// pre-populate the multi-step command view.
+	OnCaseSteps func(caseID string, steps []session.Step)
+
+	// StepRestartRequested, if non-nil, is polled after each runStepOnce call.
+	// Return true (once, consumed) to re-run the same step from the top;
+	// BeforeEachCommand handles per-command skipping to reach the restart target.
+	StepRestartRequested func(caseID string, stepIdx int) bool
 }
 
 // Runner executes one session.

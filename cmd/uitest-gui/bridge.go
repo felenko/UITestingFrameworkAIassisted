@@ -70,27 +70,45 @@ type debugCtrl struct {
 	drv platform.Driver
 
 	mu                sync.Mutex
-	verdictCh         chan runner.StepVerdict  // non-nil while paused at a command
-	recorder          platform.InputRecorder  // non-nil during recording
-	readerDone        chan struct{}            // closed when reader goroutine exits
+	verdictCh         chan runner.StepVerdict // non-nil while paused at a command
+	recorder          platform.InputRecorder // non-nil during recording
+	readerDone        chan struct{}           // closed when reader goroutine exits
 	capturedActions   []platform.RecordedAction
-	skipRemainingCmds bool   // set by Re-record/Delete; cleared at step boundary
+	skipRemainingCmds bool // set by Re-record/Delete; cleared at step boundary
+
+	// Breakpoint / run-mode state.
+	runMode     string            // "step" = pause every cmd; "run" = run to next breakpoint
+	breakpoints map[string]bool   // key: bpKey(caseID, stepIdx, cmdIdx)
+	caseSteps   []session.Step    // all steps of the current case (for multi-step view)
 
 	curCaseID  string
 	curStepIdx int
 	curCmdIdx  int
 
+	lastPausedEvent *event.Event // snapshot of the most recent command.paused event; nil when not paused
+
+	// Jump / restart state for execution-point dragging.
+	jumpTarget         int  // >=0: skip commands until this index (forward jump); -1 = none
+	restartFromCmd     int  // >=0: on step restart, skip commands before this index; -1 = none
+	stepRestartPending bool // consumed by StepRestartRequested to trigger a step re-run
+
 	undoStack []undoEntry
 	redoStack []undoEntry
 }
 
-func newDebugCtrl(a *app) *debugCtrl { return &debugCtrl{a: a} }
+// bpKey builds the map key for a breakpoint.
+func bpKey(caseID string, stepIdx, cmdIdx int) string {
+	return fmt.Sprintf("%s:%d:%d", caseID, stepIdx, cmdIdx)
+}
+
+func newDebugCtrl(a *app) *debugCtrl {
+	return &debugCtrl{a: a, jumpTarget: -1, restartFromCmd: -1}
+}
 
 // beforeCommand is called by the runner before each machine command in debug mode.
 func (ctrl *debugCtrl) beforeCommand(ctx context.Context, ev runner.CommandHookEvent) runner.StepVerdict {
 	ctrl.mu.Lock()
 	if ev.CmdIndex == 0 {
-		// Step boundary: reset skip flag so the new step's commands run normally.
 		ctrl.skipRemainingCmds = false
 		ctrl.curCaseID = ev.CaseID
 		ctrl.curStepIdx = ev.StepIndex
@@ -99,10 +117,83 @@ func (ctrl *debugCtrl) beforeCommand(ctx context.Context, ev runner.CommandHookE
 	if !skip {
 		ctrl.curCmdIdx = ev.CmdIndex
 	}
+	runMode := ctrl.runMode
+	isBreakpoint := ctrl.breakpoints[bpKey(ev.CaseID, ev.StepIndex, ev.CmdIndex)]
+	steps := ctrl.caseSteps
+
+	// Consume jumpTarget when we reach or pass the target (forward jump).
+	jumpTarget := ctrl.jumpTarget
+	if jumpTarget >= 0 && ev.CmdIndex >= jumpTarget {
+		ctrl.jumpTarget = -1
+		jumpTarget = -1 // signal: we're AT the target, don't skip
+	}
+
+	// Consume restartFromCmd when we reach or pass it (backward jump restart).
+	restartFrom := ctrl.restartFromCmd
+	if restartFrom >= 0 && ev.CmdIndex >= restartFrom {
+		ctrl.restartFromCmd = -1
+		restartFrom = -1 // signal: we're AT the restart target, proceed normally
+	}
 	ctrl.mu.Unlock()
 
 	if skip {
 		return runner.VerdictSkip
+	}
+
+	// Forward jump: skip commands that fall between current and the target.
+	if jumpTarget >= 0 {
+		return runner.VerdictSkip
+	}
+
+	// Backward-jump restart: skip commands before the restart target.
+	if restartFrom >= 0 {
+		return runner.VerdictSkip
+	}
+
+	// Build all-steps view for the IDE step inspector.
+	// Always populated when case steps are known so the user can set breakpoints
+	// on test-case steps even when the runner is currently paused at setup.
+	var allSteps []event.StepSummary
+	for _, s := range steps {
+		ss := event.StepSummary{Human: s.Human}
+		for ci := range s.Machine {
+			ss.Cmds = append(ss.Cmds, runner.DescribeCommand(&s.Machine[ci]))
+		}
+		allSteps = append(allSteps, ss)
+	}
+
+	// In run mode, push an executing indicator and proceed without pausing.
+	if runMode == "run" && !isBreakpoint {
+		ctrl.a.pushEvent(event.Event{
+			Type:        event.CommandExecuting,
+			CaseID:      ev.CaseID,
+			Phase:       ev.Phase,
+			StepIndex:   ev.StepIndex,
+			Human:       ev.Human,
+			CmdIndex:    ev.CmdIndex,
+			TotalCmds:   ev.TotalCmds,
+			CmdDesc:     runner.DescribeCommand(&ev.Cmd),
+			MachineCmds: runner.DescribeMachineList(ev.AllCmds),
+			AllSteps:    allSteps,
+		})
+		return runner.VerdictRun
+	}
+	// Hit a breakpoint in run mode: drop back to step mode for the next action.
+	if runMode == "run" && isBreakpoint {
+		ctrl.mu.Lock()
+		ctrl.runMode = "step"
+		ctrl.mu.Unlock()
+	}
+
+	// Build upcoming-steps preview (next up to 4 steps).
+	var upcoming []event.StepSummary
+	for si := ev.StepIndex + 1; si < len(steps) && si <= ev.StepIndex+4; si++ {
+		s := steps[si]
+		ss := event.StepSummary{Human: s.Human}
+		for ci := range s.Machine {
+			ss.Cmds = append(ss.Cmds, runner.DescribeCommand(&s.Machine[ci]))
+		}
+		upcoming = append(upcoming, ss)
 	}
 
 	ch := make(chan runner.StepVerdict, 1)
@@ -110,30 +201,43 @@ func (ctrl *debugCtrl) beforeCommand(ctx context.Context, ev runner.CommandHookE
 	ctrl.verdictCh = ch
 	ctrl.mu.Unlock()
 
-	ctrl.a.pushEvent(event.Event{
-		Type:        event.CommandPaused,
-		CaseID:      ev.CaseID,
-		Phase:       ev.Phase,
-		StepIndex:   ev.StepIndex,
-		Human:       ev.Human,
-		CmdIndex:    ev.CmdIndex,
-		TotalCmds:   ev.TotalCmds,
-		CmdDesc:     runner.DescribeCommand(&ev.Cmd),
-		MachineCmds: runner.DescribeMachineList(ev.AllCmds),
-	})
+	pausedEv := event.Event{
+		Type:          event.CommandPaused,
+		CaseID:        ev.CaseID,
+		Phase:         ev.Phase,
+		StepIndex:     ev.StepIndex,
+		Human:         ev.Human,
+		CmdIndex:      ev.CmdIndex,
+		TotalCmds:     ev.TotalCmds,
+		CmdDesc:       runner.DescribeCommand(&ev.Cmd),
+		MachineCmds:   runner.DescribeMachineList(ev.AllCmds),
+		UpcomingSteps: upcoming,
+		AllSteps:      allSteps,
+	}
+	ctrl.a.pushEvent(pausedEv)
+	ctrl.mu.Lock()
+	ctrl.lastPausedEvent = &pausedEv
+	ctrl.mu.Unlock()
 
 	select {
 	case v := <-ch:
 		return v
 	case <-ctx.Done():
+		ctrl.mu.Lock()
+		ctrl.verdictCh = nil
+		ctrl.mu.Unlock()
 		return runner.VerdictSkip
 	}
 }
 
-func (ctrl *debugCtrl) sendVerdict(v runner.StepVerdict) {
+// sendVerdictMode sends a verdict and sets the run mode for the NEXT beforeCommand call.
+// mode is "step" (pause on next command) or "run" (run to next breakpoint).
+func (ctrl *debugCtrl) sendVerdictMode(v runner.StepVerdict, mode string) {
 	ctrl.mu.Lock()
 	ch := ctrl.verdictCh
 	ctrl.verdictCh = nil
+	ctrl.runMode = mode
+	ctrl.lastPausedEvent = nil
 	ctrl.mu.Unlock()
 	if ch != nil {
 		select {
@@ -141,6 +245,46 @@ func (ctrl *debugCtrl) sendVerdict(v runner.StepVerdict) {
 		default:
 		}
 	}
+}
+
+// sendVerdict sends a verdict in step mode (pause on next command).
+func (ctrl *debugCtrl) sendVerdict(v runner.StepVerdict) {
+	ctrl.sendVerdictMode(v, "step")
+}
+
+// toggleBreakpoint flips the breakpoint for a command and returns the new state.
+func (ctrl *debugCtrl) toggleBreakpoint(caseID string, stepIdx, cmdIdx int) bool {
+	k := bpKey(caseID, stepIdx, cmdIdx)
+	ctrl.mu.Lock()
+	defer ctrl.mu.Unlock()
+	if ctrl.breakpoints == nil {
+		ctrl.breakpoints = make(map[string]bool)
+	}
+	active := !ctrl.breakpoints[k]
+	if active {
+		ctrl.breakpoints[k] = true
+	} else {
+		delete(ctrl.breakpoints, k)
+	}
+	return active
+}
+
+// stepRestartRequested is the Options.StepRestartRequested callback — consumed once.
+func (ctrl *debugCtrl) stepRestartRequested(caseID string, stepIdx int) bool {
+	ctrl.mu.Lock()
+	defer ctrl.mu.Unlock()
+	if ctrl.stepRestartPending {
+		ctrl.stepRestartPending = false
+		return true
+	}
+	return false
+}
+
+// onCaseSteps stores the full step list so beforeCommand can build the multi-step view.
+func (ctrl *debugCtrl) onCaseSteps(caseID string, steps []session.Step) {
+	ctrl.mu.Lock()
+	ctrl.caseSteps = steps
+	ctrl.mu.Unlock()
 }
 
 func (ctrl *debugCtrl) startRecording() error {
@@ -467,10 +611,12 @@ func (a *app) handleDebugVerdict(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	switch req.Action {
-	case "run":
-		dbg.sendVerdict(runner.VerdictRun)
+	case "step": // execute this command; pause before the next one
+		dbg.sendVerdictMode(runner.VerdictRun, "step")
+	case "run": // execute commands until the next breakpoint (or end of case)
+		dbg.sendVerdictMode(runner.VerdictRun, "run")
 	case "skip":
-		dbg.sendVerdict(runner.VerdictSkip)
+		dbg.sendVerdictMode(runner.VerdictSkip, "step")
 	case "replace":
 		if err := dbg.startRecording(); err != nil {
 			jsonErr(w, err.Error(), http.StatusInternalServerError)
@@ -479,6 +625,82 @@ func (a *app) handleDebugVerdict(w http.ResponseWriter, r *http.Request) {
 	default:
 		jsonErr(w, "unknown action: "+req.Action, http.StatusBadRequest)
 		return
+	}
+	jsonOK(w)
+}
+
+func (a *app) handleDebugBreakpoint(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	var req struct {
+		StepIndex int `json:"stepIndex"`
+		CmdIndex  int `json:"cmdIndex"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		jsonErr(w, "invalid request body", http.StatusBadRequest)
+		return
+	}
+	a.mu.Lock()
+	dbg := a.debug
+	a.mu.Unlock()
+	if dbg == nil {
+		jsonErr(w, "not in debug mode", http.StatusBadRequest)
+		return
+	}
+	dbg.mu.Lock()
+	caseID := dbg.curCaseID
+	dbg.mu.Unlock()
+	active := dbg.toggleBreakpoint(caseID, req.StepIndex, req.CmdIndex)
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]bool{"active": active})
+}
+
+// handleDebugJump moves the execution point to a different command in the current step.
+// Forward jump (target > current): skips commands between current and target.
+// Backward jump (target < current): skips remaining commands, restarts step from target.
+func (a *app) handleDebugJump(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	var req struct {
+		CmdIndex int `json:"cmdIndex"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		jsonErr(w, "invalid request body", http.StatusBadRequest)
+		return
+	}
+	a.mu.Lock()
+	dbg := a.debug
+	a.mu.Unlock()
+	if dbg == nil {
+		jsonErr(w, "not in debug mode", http.StatusBadRequest)
+		return
+	}
+	dbg.mu.Lock()
+	cur := dbg.curCmdIdx
+	dbg.mu.Unlock()
+
+	if req.CmdIndex == cur {
+		jsonOK(w)
+		return
+	}
+	if req.CmdIndex > cur {
+		// Forward jump: set target and skip from current position.
+		dbg.mu.Lock()
+		dbg.jumpTarget = req.CmdIndex
+		dbg.mu.Unlock()
+		dbg.sendVerdictMode(runner.VerdictSkip, "step")
+	} else {
+		// Backward jump: abort remaining commands in this step, restart from target.
+		dbg.mu.Lock()
+		dbg.restartFromCmd = req.CmdIndex
+		dbg.stepRestartPending = true
+		dbg.skipRemainingCmds = true
+		dbg.mu.Unlock()
+		dbg.sendVerdictMode(runner.VerdictSkip, "step")
 	}
 	jsonOK(w)
 }
@@ -915,6 +1137,7 @@ func (a *app) bind() {
 		"resumeRun":     a.resumeRun,
 		"openReport":    a.openReport,
 		"openOutputDir": a.openOutputDir,
+		"openURL":       a.openURL,
 	} {
 		if err := a.w.Bind(name, fn); err != nil {
 			a.debugLog(fmt.Sprintf("bind %s failed: %v", name, err))
@@ -955,14 +1178,21 @@ type sessionSummary struct {
 	Totals   totals        `json:"totals"`
 }
 
+type stepDetail struct {
+	Human   string   `json:"human"`
+	Machine []string `json:"machine"`
+}
+
 type caseSummary struct {
-	ID          string   `json:"id"`
-	Name        string   `json:"name"`
-	Description string   `json:"description"`
-	Folder      string   `json:"folder"`
-	Tags        []string `json:"tags"`
-	Steps       []string `json:"steps"`
-	Asserts     []string `json:"asserts"`
+	ID          string       `json:"id"`
+	Name        string       `json:"name"`
+	Description string       `json:"description"`
+	Folder      string       `json:"folder"`
+	Tags        []string     `json:"tags"`
+	Setup       []stepDetail `json:"setup"`
+	Steps       []stepDetail `json:"steps"`
+	Cleanup     []stepDetail `json:"cleanup"`
+	Asserts     []string     `json:"asserts"`
 }
 
 type totals struct {
@@ -991,9 +1221,28 @@ func (a *app) loadSession(path string) (sum sessionSummary, err error) {
 	for i := range sess.TestCases {
 		tc := &sess.TestCases[i]
 		cs := caseSummary{ID: tc.ID, Name: tc.Name, Description: tc.Description, Folder: tc.Folder, Tags: tc.Tags}
+		for _, st := range tc.Setup {
+			cs.Setup = append(cs.Setup, stepDetail{
+				Human:   st.Human,
+				Machine: runner.DescribeMachineList(st.Machine),
+			})
+		}
 		for _, st := range tc.Steps {
-			cs.Steps = append(cs.Steps, st.Human)
+			cs.Steps = append(cs.Steps, stepDetail{
+				Human:   st.Human,
+				Machine: runner.DescribeMachineList(st.Machine),
+			})
 			sum.Totals.Steps++
+		}
+		cleanup := tc.Cleanup
+		if len(cleanup) == 0 {
+			cleanup = tc.Teardown
+		}
+		for _, st := range cleanup {
+			cs.Cleanup = append(cs.Cleanup, stepDetail{
+				Human:   st.Human,
+				Machine: runner.DescribeMachineList(st.Machine),
+			})
 		}
 		for _, as := range tc.Validation.Assert {
 			label := as.Human
@@ -1190,6 +1439,9 @@ func (a *app) runAsync(path, optsJSON string, gen int) {
 	}
 	if dbg != nil {
 		opts.BeforeEachCommand = dbg.beforeCommand
+		opts.OnCaseSteps = dbg.onCaseSteps
+		opts.StepRestartRequested = dbg.stepRestartRequested
+		setDebugHotkeyCtrl(dbg)
 	}
 
 	// Pre-create the output directory so we can open events.jsonl before
@@ -1250,6 +1502,7 @@ func (a *app) runAsync(path, optsJSON string, gen int) {
 		}
 		a.mu.Unlock()
 		defer func() {
+			setDebugHotkeyCtrl(nil)
 			a.mu.Lock()
 			if a.debug == dbg {
 				a.debug = nil
@@ -1427,6 +1680,12 @@ func (a *app) evalAsync(js string) {
 // for a local .html file from a GUI process.
 func openFile(path string) error {
 	return exec.Command("rundll32.exe", "url.dll,FileProtocolHandler", path).Start()
+}
+
+// openURL opens a URL in the system default browser. Used by the JS bridge to
+// open the debug panel in a real browser (window.open is blocked in WebView2).
+func (a *app) openURL(url string) error {
+	return openFile(url)
 }
 
 // handleUpdateProvider patches the ai.provider field in the loaded session YAML.
