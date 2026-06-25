@@ -71,6 +71,8 @@ When paused, a panel slides up from the bottom showing the full command list for
 
 Completed commands show ✓, the current command shows ▶, pending commands show ○. The left gutter shows ◌/● breakpoint dots — click to toggle, or press **F9**.
 
+![Debug panel — detached into Chrome, paused mid-step](debug%20console%20example.png)
+
 ### Controls
 
 | Action | What it does |
