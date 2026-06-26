@@ -19,6 +19,8 @@ var knownActions = map[string]bool{
 	"screenshot": true, "assert_ai": true, "read_text_ai": true,
 	// deterministic assertions (no AI)
 	"assert_window": true, "assert_element": true, "assert_dialog": true,
+	// control flow
+	"wait_for": true, "repeat": true,
 }
 
 // elementStates are the accepted values for assert_element's `state` field.
@@ -53,9 +55,9 @@ func Validate(s *Session) error {
 		v.add("unsupported version %d (this runner supports version %d)", s.Version, SupportedVersion)
 	}
 
-	if strings.TrimSpace(s.Session.Application.Path) == "" {
-		v.add("session.application.path is required")
-	}
+	// application.path is optional for monitoring/utility sessions that interact
+	// with existing windows (e.g. a build-monitor that handles PIN dialogs).
+
 
 	if ai := s.Session.AI; ai.Provider != "" && !knownProviders[ai.Provider] {
 		v.add("session.ai.provider %q is not a known provider (claude|codex|cursor)", ai.Provider)
@@ -238,14 +240,47 @@ func (v *validator) checkCommand(where string, c *Command) {
 			v.add("%s: assert_dialog requires a dialog title (target.window) and/or `buttons`", where)
 		}
 		v.checkExpect(where, c.Expect)
+
+	case "wait_for":
+		if c.WaitCondition == nil || c.WaitCondition.IsZero() {
+			v.add("%s: wait_for requires a condition", where)
+		} else {
+			v.checkCondition(where+".condition", c.WaitCondition)
+		}
+
+	case "repeat":
+		forms := 0
+		if c.Times > 0 {
+			forms++
+		}
+		if c.While != nil && !c.While.IsZero() {
+			forms++
+		}
+		if c.Until != nil && !c.Until.IsZero() {
+			forms++
+		}
+		if forms == 0 {
+			v.add("%s: repeat requires one of: times, while, or until", where)
+		} else if forms > 1 {
+			v.add("%s: repeat accepts only one of: times, while, or until", where)
+		}
+		if c.While != nil && !c.While.IsZero() {
+			v.checkCondition(where+".while", c.While)
+		}
+		if c.Until != nil && !c.Until.IsZero() {
+			v.checkCondition(where+".until", c.Until)
+		}
+		for i := range c.Steps {
+			v.checkCommand(fmt.Sprintf("%s.steps[%d]", where, i), &c.Steps[i])
+		}
 	}
 }
 
-// checkCondition validates a waitBefore/verify/forAI condition: it must declare
-// at least one rung, and any AI rung needs a valid expect.
+// checkCondition validates a waitBefore/verify/forAI/wait_for/repeat condition:
+// it must declare at least one rung, and any AI rung needs a valid expect.
 func (v *validator) checkCondition(where string, c *Condition) {
 	if c.IsZero() {
-		v.add("%s: a condition needs at least one of window|changed|stable|uia|question", where)
+		v.add("%s: a condition needs at least one of window|process_running|process_stopped|file_exists|file_not_exists|changed|stable|uia|question", where)
 		return
 	}
 	if c.Question != "" {

@@ -209,6 +209,9 @@ type Driver interface {
 	EnsureOnPrimary(w Window) (bool, error) // move w onto the primary monitor if its center is off it; reports whether it moved
 	WindowPID(w Window) uint32 // process that owns the window (may differ from a launcher PID)
 
+	// Process query.
+	ProcessRunning(name string) bool // true if any process whose exe matches name (case-insensitive) is alive
+
 	// Input integrity.
 	WatchInput() (InputWatcher, error) // start observing real user input during a run
 

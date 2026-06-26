@@ -1,0 +1,71 @@
+# yaml-language-server: $schema=./schema/testsession.schema.json
+version: 1
+
+session:
+  name: "AdvancedInstaller YubiKey PIN Handler"
+  description: >
+    Run alongside an AdvancedInstaller build that requires code-signing.
+    Monitors for the Windows Security Smart Card PIN dialog and automatically
+    enters PIN 702870.
+
+    Exits cleanly once no PIN dialog has appeared for 2 consecutive minutes,
+    which signals the build's signing phase is complete. The first dialog
+    must appear within 2 minutes of starting.
+
+  ai:
+    provider: claude
+    timeout: 20s
+    retries: 1
+
+  settings:
+    outDir: "./yubikey-pin-results"
+    failFast: false
+    screenshotOnFailure: true
+
+testCases:
+
+  - id: YUBIKEY-MONITOR
+    name: "Monitor and auto-enter YubiKey PIN during build"
+    description: >
+      Loops while the Windows Security PIN dialog is present. Between dialogs,
+      the grace period polls every second for up to 2 minutes — if a new
+      dialog appears it enters the PIN; if 2 minutes pass with nothing the
+      signing phase is done and the case exits.
+
+    steps:
+      - human: "Enter PIN for each dialog; stop after 2 minutes of silence"
+        timeout: 4h
+        machine:
+          - action: repeat
+            while:
+              window:
+                title: "Windows Security"
+            grace: 2m       # poll every `interval` for up to 2 min between dialogs
+            interval: 1s    # poll cadence inside the grace period
+            timeout: 4h     # hard ceiling in case something hangs
+            steps:
+              - action: focus_window
+                target: { window: "Windows Security" }
+
+              - action: type_text
+                text: "702870"
+
+              - action: key_press
+                keys: Return
+
+              - action: wait_for
+                condition:
+                  window:
+                    title: "Windows Security"
+                    gone: true
+                timeout: 15s
+                interval: 500ms
+                optional: true    # if dialog closes fast, don't error
+
+    validation:
+      human: "No PIN dialog appeared for 2 consecutive minutes — signing phase complete."
+      assert:
+        - action: assert_ai
+          question: "Is there no Windows Security Smart Card PIN dialog visible on screen?"
+          target: screen
+          expect: yes

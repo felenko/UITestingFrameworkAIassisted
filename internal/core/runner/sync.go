@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"image"
+	"os"
 	"strings"
 	"time"
 
@@ -87,6 +88,7 @@ func (r *Runner) recoverOnCaseFailure() bool {
 type forcedWindow struct {
 	w          platform.Window
 	wasTopmost bool
+	denied     bool // SetTopmost was refused (e.g. system-owned dialog) — don't retry
 }
 
 // ensureTopmost pins the bound window above non-topmost windows so a stray
@@ -101,11 +103,18 @@ func (r *Runner) ensureTopmost() {
 	if r.topmostForced == nil {
 		r.topmostForced = make(map[uintptr]forcedWindow)
 	}
-	if _, seen := r.topmostForced[h]; !seen {
+	if fw, seen := r.topmostForced[h]; seen {
+		if fw.denied {
+			return // system-owned window; topmost promotion was already refused — give up silently
+		}
+	} else {
 		r.topmostForced[h] = forcedWindow{w: r.currentWindow, wasTopmost: r.drv.IsTopmost(r.currentWindow)}
 	}
 	if err := r.drv.SetTopmost(r.currentWindow, true); err != nil {
 		r.logf("warn", "force topmost: %v", err)
+		fw := r.topmostForced[h]
+		fw.denied = true
+		r.topmostForced[h] = fw
 	}
 }
 
@@ -398,6 +407,26 @@ func (r *Runner) pointRungs(ctx context.Context, cond *session.Condition, target
 			return false, nil
 		}
 	}
+	if cond.ProcessRunning != "" {
+		if !r.drv.ProcessRunning(r.bag.Expand(cond.ProcessRunning)) {
+			return false, nil
+		}
+	}
+	if cond.ProcessStopped != "" {
+		if r.drv.ProcessRunning(r.bag.Expand(cond.ProcessStopped)) {
+			return false, nil
+		}
+	}
+	if cond.FileExists != "" {
+		if _, err := os.Stat(r.bag.Expand(cond.FileExists)); os.IsNotExist(err) {
+			return false, nil
+		}
+	}
+	if cond.FileNotExists != "" {
+		if _, err := os.Stat(r.bag.Expand(cond.FileNotExists)); err == nil {
+			return false, nil
+		}
+	}
 	if cond.UIA != nil {
 		w, werr := r.uiaWindow(condTarget(cond, target))
 		if werr != nil {
@@ -460,6 +489,9 @@ func (r *Runner) pointRungs(ctx context.Context, cond *session.Condition, target
 }
 
 // windowExists reports whether a window matching the condition is present.
+// When the app-scoped search fails and an appPID is active, it falls back to
+// a global search so system dialogs (e.g. "Windows Security") are visible even
+// in sessions that have a bound application process.
 func (r *Runner) windowExists(wm *session.WindowMatch) bool {
 	q := platform.WindowQuery{
 		Title:    r.bag.Expand(wm.Title),
@@ -474,7 +506,15 @@ func (r *Runner) windowExists(wm *session.WindowMatch) bool {
 		q.Strategy = "class"
 	}
 	_, err := r.drv.FindWindow(q)
-	return err == nil
+	if err == nil {
+		return true
+	}
+	if q.PID != 0 {
+		q.PID = 0
+		_, err = r.drv.FindWindow(q)
+		return err == nil
+	}
+	return false
 }
 
 // askAI evaluates a condition's AI rung against a fresh capture.

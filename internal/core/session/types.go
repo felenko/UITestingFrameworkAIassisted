@@ -149,15 +149,20 @@ type UIACondition struct {
 }
 
 // Condition is a cost-ordered, ladder-aware check used by `waitBefore`,
-// `verify`, `wait.forAI`, and `readyWhen.forAI`. All present rungs must hold;
-// the runner evaluates the cheapest rungs first and only invokes the AI
-// (`question`) when it is the declared check or as the escalation rung.
+// `verify`, `wait.forAI`, `wait_for`, `repeat while/until`, and
+// `readyWhen.forAI`. All present rungs must hold; the runner evaluates the
+// cheapest rungs first and only invokes the AI (`question`) when it is the
+// declared check or as the escalation rung.
 type Condition struct {
 	// Cheap rungs (no AI cost).
-	Window  *WindowMatch  `yaml:"window"`  // a window must exist (or be gone)
-	Changed bool          `yaml:"changed"` // the target region must have changed since acting
-	Stable  bool          `yaml:"stable"`  // the target region must be visually settled
-	UIA     *UIACondition `yaml:"uia"`     // a UIA element state (Phase 2)
+	Window         *WindowMatch  `yaml:"window"`          // a window must exist (or be gone)
+	ProcessRunning string        `yaml:"process_running"` // named process (e.g. "build.exe") must be running
+	ProcessStopped string        `yaml:"process_stopped"` // named process must NOT be running
+	FileExists     string        `yaml:"file_exists"`     // path must exist on disk
+	FileNotExists  string        `yaml:"file_not_exists"` // path must NOT exist on disk
+	Changed        bool          `yaml:"changed"`         // the target region must have changed since acting
+	Stable         bool          `yaml:"stable"`          // the target region must be visually settled
+	UIA            *UIACondition `yaml:"uia"`             // a UIA element state (Phase 2)
 
 	// Rich rung (AI vision).
 	Question string `yaml:"question"`
@@ -174,7 +179,9 @@ func (c *Condition) IsZero() bool {
 	if c == nil {
 		return true
 	}
-	return c.Window == nil && !c.Changed && !c.Stable && c.UIA == nil && c.Question == ""
+	return c.Window == nil && !c.Changed && !c.Stable && c.UIA == nil && c.Question == "" &&
+		c.ProcessRunning == "" && c.ProcessStopped == "" &&
+		c.FileExists == "" && c.FileNotExists == ""
 }
 
 // ForAI is the AI polling/extraction sub-spec used by `wait.forAI` and

@@ -235,4 +235,19 @@ type Command struct {
 	WaitBefore    *Condition `yaml:"waitBefore"`    // precondition: target ready before acting
 	Verify        *Condition `yaml:"verify"`        // postcondition: the action had its effect
 	ActionRetries *int       `yaml:"actionRetries"` // re-attempts of the action when Verify fails
+
+	// --- repeat action ---
+	// Exactly one of Times, While, or Until should be set.
+	// Timeout caps the total loop duration regardless of which exit form is used.
+	Times    int        `yaml:"times"`    // run body exactly N times
+	While    *Condition `yaml:"while"`    // keep running while condition holds (checked before each body)
+	Until    *Condition `yaml:"until"`    // keep running until condition becomes true (checked after each body)
+	Grace    Duration   `yaml:"grace"`    // for while/until: tolerate the exit condition for this long before stopping
+	Interval Duration   `yaml:"interval"` // minimum delay between repeat iterations / wait_for poll interval
+	Steps    []Command  `yaml:"steps"`    // body commands executed each iteration
+	Strict   bool       `yaml:"strict"`   // if true, a body command error stops the whole repeat (default: breaks current iteration only)
+
+	// --- wait_for action ---
+	WaitCondition *Condition `yaml:"condition"` // condition to poll until true
+	Optional      bool       `yaml:"optional"`  // if true, a timeout is not an error
 }

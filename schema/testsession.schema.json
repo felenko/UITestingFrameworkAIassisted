@@ -459,6 +459,36 @@
         "actionRetries": {
           "type": "integer",
           "description": "How many times to re-attempt the action if Verify fails."
+        },
+        "times": {
+          "type": "integer"
+        },
+        "while": {
+          "$ref": "#/$defs/Condition"
+        },
+        "until": {
+          "$ref": "#/$defs/Condition"
+        },
+        "grace": {
+          "$ref": "#/$defs/Duration"
+        },
+        "interval": {
+          "$ref": "#/$defs/Duration"
+        },
+        "steps": {
+          "items": {
+            "$ref": "#/$defs/Command"
+          },
+          "type": "array"
+        },
+        "strict": {
+          "type": "boolean"
+        },
+        "condition": {
+          "$ref": "#/$defs/Condition"
+        },
+        "optional": {
+          "type": "boolean"
         }
       },
       "additionalProperties": false,
@@ -472,6 +502,18 @@
         "window": {
           "$ref": "#/$defs/WindowMatch",
           "description": "A window must exist (or be gone, if window.gone is set)."
+        },
+        "process_running": {
+          "type": "string"
+        },
+        "process_stopped": {
+          "type": "string"
+        },
+        "file_exists": {
+          "type": "string"
+        },
+        "file_not_exists": {
+          "type": "string"
         },
         "changed": {
           "type": "boolean",

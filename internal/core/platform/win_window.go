@@ -260,28 +260,40 @@ func (d *winDriver) FocusWindow(w Window) error {
 		}
 		procBringWindowToTop.Call(hwnd)
 
-		// Attach to the current foreground thread's input queue so focus can be
-		// transferred despite focus-stealing prevention.
+		// Attach our calling thread to the current foreground thread's input queue
+		// so SetForegroundWindow is permitted despite focus-stealing prevention.
+		// NOTE: the attached thread must be *our* thread (GetCurrentThreadId), not
+		// the target window's thread — that's what grants us the right to call
+		// SetForegroundWindow successfully.
 		fg, _, _ := procGetForegroundWindow.Call()
-		var fgThread, ourThread uintptr
+		var fgThread, myThread uintptr
 		if fg != 0 {
 			fgThread, _, _ = procGetWindowThreadProcessId.Call(fg, 0)
 		}
-		ourThread, _, _ = procGetWindowThreadProcessId.Call(hwnd, 0)
+		myThread, _, _ = procGetCurrentThreadId.Call()
 		attached := false
-		if fgThread != 0 && fgThread != ourThread {
-			if r, _, _ := procAttachThreadInput.Call(fgThread, ourThread, 1); r != 0 {
+		if fgThread != 0 && fgThread != myThread {
+			if r, _, _ := procAttachThreadInput.Call(fgThread, myThread, 1); r != 0 {
 				attached = true
 			}
 		}
 		procSetForegroundWindow.Call(hwnd)
 		if attached {
-			procAttachThreadInput.Call(fgThread, ourThread, 0)
+			procAttachThreadInput.Call(fgThread, myThread, 0)
 		}
 
 		time.Sleep(60 * time.Millisecond)
-		if cur, _, _ := procGetForegroundWindow.Call(); cur == hwnd {
-			return nil // activated
+		cur, _, _ := procGetForegroundWindow.Call()
+		if cur == hwnd {
+			return nil // exact match
+		}
+		// Credential/composite dialogs (e.g. Windows Security) host the visible
+		// PIN dialog as a child HWND. GetForegroundWindow returns the child, not
+		// the top-level host we found — accept that as success.
+		if cur != 0 {
+			if child, _, _ := procIsChild.Call(hwnd, cur); child != 0 {
+				return nil
+			}
 		}
 	}
 	return fmt.Errorf("could not bring window %q to the foreground", w.Title())

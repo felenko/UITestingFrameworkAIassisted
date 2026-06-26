@@ -230,8 +230,8 @@ func (r *Runner) Run(ctx context.Context) (res *result.Results, code int) {
 		return r.finishRun(results, code), code
 	}
 
-	// Launch app.
-	if !r.opts.NoAppLaunch {
+	// Launch app (skip for monitor/utility sessions that have no application path).
+	if !r.opts.NoAppLaunch && r.sess.Session.Application.Path != "" {
 		if err := r.launchApp(ctx); err != nil {
 			r.logf("error", "application failed to launch: %v", err)
 			results.FinishedAt = time.Now()

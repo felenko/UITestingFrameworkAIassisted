@@ -54,6 +54,7 @@ var (
 	procSetWindowPos            = user32.NewProc("SetWindowPos")
 	procAttachThreadInput       = user32.NewProc("AttachThreadInput")
 	procGetForegroundWindow     = user32.NewProc("GetForegroundWindow")
+	procIsChild                 = user32.NewProc("IsChild")
 	procSystemParametersInfo    = user32.NewProc("SystemParametersInfoW")
 	procGetWindowLongW          = user32.NewProc("GetWindowLongW")
 
@@ -74,6 +75,11 @@ var (
 	procOpenProcess               = kernel32.NewProc("OpenProcess")
 	procCloseHandle               = kernel32.NewProc("CloseHandle")
 	procQueryFullProcessImageName = kernel32.NewProc("QueryFullProcessImageNameW")
+
+	// Process enumeration (for process_running condition).
+	procCreateToolhelp32Snapshot = kernel32.NewProc("CreateToolhelp32Snapshot")
+	procProcess32FirstW          = kernel32.NewProc("Process32FirstW")
+	procProcess32NextW           = kernel32.NewProc("Process32NextW")
 )
 
 // Win32 constants used across the driver.
